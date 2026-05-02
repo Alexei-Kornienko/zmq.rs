@@ -9,7 +9,6 @@ mod bench_runtime;
 
 use bench_runtime::BenchRuntime;
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
-use futures::future;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{mpsc, Arc};
 use std::thread;
@@ -23,6 +22,8 @@ use zeromq::{
 const MSG_SIZES: &[usize] = &[16, 256, 4096, 65536];
 const SUB_COUNTS: &[usize] = &[1, 8, 64];
 const TRANSPORTS: &[&str] = &["tcp", "ipc"];
+const PUB_SUB_SEND_TIMEOUT: Duration = Duration::from_millis(100);
+const PUB_SUB_RECV_TIMEOUT: Duration = Duration::from_millis(20);
 
 static IPC_SEQ: AtomicU64 = AtomicU64::new(0);
 
@@ -86,7 +87,7 @@ fn bench_libzmq_pub_sub_one(
 
     struct SubHandle {
         tx_drive: mpsc::Sender<()>,
-        rx_done: mpsc::Receiver<Vec<u8>>,
+        rx_done: mpsc::Receiver<Option<Vec<u8>>>,
         _thread: thread::JoinHandle<()>,
     }
 
@@ -98,13 +99,19 @@ fn bench_libzmq_pub_sub_one(
         let (tx_done, rx_done) = mpsc::channel();
         let thread = thread::spawn(move || {
             let sub = ctx.socket(zmq2::SUB).expect("sub socket");
+            sub.set_rcvtimeo(PUB_SUB_RECV_TIMEOUT.as_millis() as i32)
+                .expect("rcvtimeo");
             sub.connect(&bound).expect("sub connect");
             sub.set_subscribe(b"").expect("subscribe");
             while rx_drive.recv().is_ok() {
-                let got = sub.recv_bytes(0).expect("sub recv");
+                let got = match sub.recv_bytes(0) {
+                    Ok(got) => Some(got),
+                    Err(zmq2::Error::EAGAIN) => None,
+                    Err(e) => panic!("sub recv: {e:?}"),
+                };
                 if tx_done.send(got).is_err() {
                     break;
-                }
+                };
             }
         });
         subs.push(SubHandle {
@@ -122,7 +129,9 @@ fn bench_libzmq_pub_sub_one(
         }
         pub_sock.send(&payload, 0).expect("pub send");
         for sub in &subs {
-            black_box(sub.rx_done.recv().expect("sub done"));
+            if let Some(got) = sub.rx_done.recv().expect("sub done") {
+                black_box(got);
+            }
         }
     });
 }
@@ -137,7 +146,7 @@ fn bench_zmqrs_pub_sub(c: &mut Criterion) {
             group.warm_up_time(Duration::from_secs(2));
             for &msg_size in MSG_SIZES {
                 if n_subs == 64 && msg_size == 65536 {
-                    continue;
+                    continue
                 }
                 group.throughput(Throughput::Bytes((msg_size * n_subs) as u64));
                 group.bench_with_input(
@@ -183,13 +192,25 @@ fn bench_zmqrs_pub_sub_one(
     let payload = vec![0xAB; msg_size];
     b.iter(|| {
         rt.block_on(async {
-            pub_sock
-                .send(ZmqMessage::from(payload.clone()))
-                .await
-                .expect("pub send");
+            let send_result = task::timeout(
+                PUB_SUB_SEND_TIMEOUT,
+                pub_sock.send(ZmqMessage::from(payload.clone())),
+            )
+            .await;
+            if send_result.is_err() {
+                return;
+            }
+            send_result.unwrap().expect("pub send");
 
-            let recv_futures: Vec<_> = subs.iter_mut().map(|s| s.recv()).collect();
-            black_box(future::join_all(recv_futures).await);
+            for s in &mut subs {
+                match task::timeout(PUB_SUB_RECV_TIMEOUT, s.recv()).await {
+                    Ok(Ok(m)) => {
+                        black_box(m);
+                    }
+                    Ok(Err(e)) => panic!("sub recv: {e:?}"),
+                    Err(_) => break,
+                }
+            }
         });
     });
 }

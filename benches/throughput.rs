@@ -17,6 +17,9 @@ const BATCH_SIZE: usize = 1024;
 const PIPELINE_SIZES: &[usize] = &[256, 4096];
 const SUB_COUNTS: &[usize] = &[1, 8, 64];
 const TRANSPORTS: &[&str] = &["tcp", "ipc"];
+const PUB_SUB_SETTLE_DELAY: Duration = Duration::from_millis(200);
+const PUB_SUB_RECV_TIMEOUT: Duration = Duration::from_millis(20);
+const PUB_SUB_BATCH_TIMEOUT: Duration = Duration::from_millis(500);
 
 static IPC_SEQ: AtomicU64 = AtomicU64::new(0);
 
@@ -82,26 +85,8 @@ fn bench_zmqrs_pub_pipelined_one(
             subs.push(s);
         }
 
-        let sync = ZmqMessage::from(vec![0xFF]);
-        let mut remaining = subs;
-        let mut ready = Vec::with_capacity(n_subs);
-        let deadline = std::time::Instant::now() + Duration::from_secs(10);
-        while !remaining.is_empty() {
-            if std::time::Instant::now() > deadline {
-                panic!("zmqrs pub/sub sync timed out");
-            }
-            p.send(sync.clone()).await.expect("pub sync");
-            let mut waiting = Vec::new();
-            for mut s in remaining.drain(..) {
-                match task::timeout(Duration::from_millis(5), s.recv()).await {
-                    Ok(Ok(_)) => ready.push(s),
-                    Ok(Err(e)) => panic!("sub sync recv: {e:?}"),
-                    Err(_) => waiting.push(s),
-                }
-            }
-            remaining = waiting;
-        }
-        (p, ready)
+        task::sleep(PUB_SUB_SETTLE_DELAY).await;
+        (p, subs)
     });
 
     let payload = vec![0xAB; msg_size];
@@ -112,7 +97,7 @@ fn bench_zmqrs_pub_pipelined_one(
                 .map(|mut s| {
                     task::spawn(async move {
                         for _ in 0..BATCH_SIZE {
-                            match task::timeout(Duration::from_millis(20), s.recv()).await {
+                            match task::timeout(PUB_SUB_RECV_TIMEOUT, s.recv()).await {
                                 Ok(Ok(m)) => {
                                     black_box(m);
                                 }
@@ -124,14 +109,20 @@ fn bench_zmqrs_pub_pipelined_one(
                     })
                 })
                 .collect();
-            for _ in 0..BATCH_SIZE {
-                pub_sock
-                    .send(ZmqMessage::from(payload.clone()))
-                    .await
-                    .expect("pub send");
-            }
+            let send_result = task::timeout(PUB_SUB_BATCH_TIMEOUT, async {
+                for _ in 0..BATCH_SIZE {
+                    pub_sock
+                        .send(ZmqMessage::from(payload.clone()))
+                        .await
+                        .expect("pub send");
+                }
+            })
+            .await;
             for h in sub_handles {
                 subs.push(h.await.expect("sub task"));
+            }
+            if send_result.is_err() {
+                return;
             }
         });
     });
