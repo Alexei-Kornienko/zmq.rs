@@ -245,8 +245,8 @@ pub trait SocketSend {
 pub trait CaptureSocket: SocketSend {}
 
 #[allow(clippy::empty_line_after_outer_attr)]
-#[async_trait]
-pub trait Socket: Sized + Send {
+#[async_trait(?Send)]
+pub trait Socket: Sized{
     fn new() -> Self {
         Self::with_options(SocketOptions::default())
     }

@@ -5,6 +5,7 @@ pub use join_handle::JoinHandle;
 use std::any::Any;
 use std::future::Future;
 
+#[cfg(not(feature = "monoio-runtime"))]
 #[track_caller]
 pub fn spawn<T>(task: T) -> JoinHandle<T::Output>
 where
@@ -17,8 +18,20 @@ where
     let result = async_std::task::spawn(task).into();
     #[cfg(feature = "async-dispatcher-runtime")]
     let result = async_dispatcher::spawn(task).into();
+    
 
     result
+}
+
+
+#[cfg(feature = "monoio-runtime")]
+#[track_caller]
+pub fn spawn<T>(task: T) -> JoinHandle<T::Output>
+where
+    T: Future + 'static,
+    T::Output: 'static,
+{
+    monoio::spawn(task).into()
 }
 
 /// The type of error the occurred in the task. See [`JoinHandle`].
@@ -59,6 +72,8 @@ pub async fn sleep(duration: std::time::Duration) {
     ::async_std::task::sleep(duration).await;
     #[cfg(feature = "async-dispatcher-runtime")]
     ::async_dispatcher::sleep(duration).await;
+    #[cfg(feature = "monoio-runtime")]
+    ::monoio::time::sleep(duration).await;
 }
 
 pub async fn timeout<F, T>(
@@ -74,6 +89,8 @@ where
     let result = ::async_std::future::timeout(duration, f).await?;
     #[cfg(feature = "async-dispatcher-runtime")]
     let result = ::async_dispatcher::timeout(duration, f).await?;
+    #[cfg(feature = "monoio-runtime")]
+    let result = ::monoio::time::timeout(duration, f).await?;
 
     Ok(result)
 }

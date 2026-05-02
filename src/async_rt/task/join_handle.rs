@@ -4,6 +4,9 @@ use async_dispatcher as rt_task;
 use async_std::task as rt_task;
 #[cfg(feature = "tokio-runtime")]
 use tokio::task as rt_task;
+#[cfg(feature = "monoio-runtime")]
+use monoio::task as rt_task;
+
 
 use super::JoinError;
 
@@ -19,10 +22,11 @@ impl<T> Future for JoinHandle<T> {
         // In async-std, the program aborts on panic so results arent returned. To
         // unify with tokio, we simply make an `Ok` result.
         let result = rt_task::JoinHandle::poll(Pin::new(&mut self.0), cx);
-        #[cfg(any(feature = "async-std-runtime", feature = "async-dispatcher-runtime"))]
+        #[cfg(any(feature = "async-std-runtime", feature = "async-dispatcher-runtime", feature = "monoio-runtime"))]
         return result.map(Ok);
         #[cfg(feature = "tokio-runtime")]
         return result.map_err(|e| e.into());
+
     }
 }
 impl<T> From<rt_task::JoinHandle<T>> for JoinHandle<T> {

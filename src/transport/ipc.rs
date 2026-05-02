@@ -7,6 +7,10 @@ use tokio::net::{UnixListener, UnixStream};
 ))]
 use async_std::os::unix::net::{UnixListener, UnixStream};
 
+#[cfg(all(feature = "monoio-runtime", target_family = "unix"))]
+use monoio::net::unix::{UnixListener, UnixStream};
+
+
 #[cfg(windows)]
 use win_uds::net::{AsyncListener as UnixListener, AsyncStream as UnixStream};
 

@@ -57,7 +57,7 @@ impl SubSocket {
     }
 }
 
-#[async_trait]
+#[async_trait(?Send)]
 impl Socket for SubSocket {
     fn with_options(options: SocketOptions) -> Self {
         let mut fair_queue = FairQueue::new(true);

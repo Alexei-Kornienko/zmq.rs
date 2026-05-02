@@ -4,6 +4,9 @@ use tokio::net::{TcpListener, TcpStream};
 #[cfg(any(feature = "async-std-runtime", feature = "async-dispatcher-runtime"))]
 use async_std::net::{TcpListener, TcpStream};
 
+#[cfg(feature = "monoio-runtime")]
+use monoio::net::tcp::{TcpListener, TcpStream};
+
 use super::make_framed;
 use super::AcceptStopHandle;
 use crate::async_rt;

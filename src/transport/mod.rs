@@ -110,3 +110,14 @@ where
     let (read, write) = stream.split();
     FramedIo::new(Box::new(read), Box::new(write))
 }
+
+#[allow(unused)]
+#[cfg(feature = "monoio-runtime")]
+fn make_framed<T>(stream: T) -> FramedIo
+where
+    T: monoio::io::AsyncReadRent + monoio::io::AsyncWriteRent + monoio::io::Splitable + 'static,
+{
+    use monoio::io::Splitable;
+    let (read, write) = stream.into_split();
+    FramedIo::new(Box::new(read), Box::new(write))
+}

@@ -17,3 +17,8 @@ pub use async_std::{main, test};
     feature = "async-dispatcher-macros"
 ))]
 pub use async_dispatcher::{main, test};
+
+#[cfg(feature = "monoio-runtime")]
+extern crate monoio;
+#[cfg(feature = "monoio-runtime")]
+pub use monoio::{main, test};
