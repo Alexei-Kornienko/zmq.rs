@@ -30,3 +30,11 @@ pub use async_dispatcher::{main, test};
 #[allow(unused)]
 #[cfg(feature = "async-dispatcher-runtime")]
 pub use async_dispatcher::sleep;
+
+#[allow(unused_imports)]
+#[cfg(feature = "monoio-runtime")]
+pub use monoio::{main, test};
+
+#[allow(unused_imports)]
+#[cfg(feature = "monoio-runtime")]
+pub use monoio::time::sleep;

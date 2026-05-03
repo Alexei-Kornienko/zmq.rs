@@ -3,9 +3,17 @@ use std::future::Future;
 #[cfg(feature = "tokio-runtime")]
 use tokio::runtime::{Builder, Runtime};
 
+#[cfg(feature = "monoio-runtime")]
+type Runtime = monoio::FusionRuntime<
+    monoio::time::TimeDriver<monoio::IoUringDriver>,
+    monoio::time::TimeDriver<monoio::LegacyDriver>,
+>;
+
 pub struct BenchRuntime {
     #[cfg(feature = "tokio-runtime")]
     inner: Runtime,
+    #[cfg(feature = "monoio-runtime")]
+    inner: std::cell::RefCell<Runtime>,
 }
 
 impl BenchRuntime {
@@ -31,6 +39,18 @@ impl BenchRuntime {
             async_dispatcher::set_dispatcher(async_dispatcher::thread_dispatcher());
             Self {}
         }
+
+        #[cfg(feature = "monoio-runtime")]
+        {
+            Self {
+                inner: std::cell::RefCell::new(
+                    monoio::RuntimeBuilder::<monoio::FusionDriver>::new()
+                        .enable_timer()
+                        .build()
+                        .expect("monoio runtime"),
+                ),
+            }
+        }
     }
 
     #[allow(clippy::unused_self)]
@@ -51,6 +71,11 @@ impl BenchRuntime {
         #[cfg(feature = "async-dispatcher-runtime")]
         {
             async_dispatcher::block_on(future)
+        }
+
+        #[cfg(feature = "monoio-runtime")]
+        {
+            self.inner.borrow_mut().block_on(future)
         }
     }
 }
