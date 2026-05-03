@@ -2,10 +2,10 @@ use crate::codec::{Message, ZmqFramedRead};
 use crate::endpoint::Endpoint;
 use crate::error::{ZmqError, ZmqResult};
 use crate::fair_queue::FairQueue;
+use crate::runtime::AcceptStopHandle;
 use crate::sub_backend::{
     connect_with_reconnect, SocketBinds, SubSocketBackend, SubscriptionMessageType,
 };
-use crate::transport::AcceptStopHandle;
 use crate::util::PeerIdentity;
 use crate::{
     MultiPeerBackend, Socket, SocketBackend, SocketEvent, SocketOptions, SocketRecv, SocketSend,
@@ -148,7 +148,7 @@ impl SocketSend for XSubSocket {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::async_rt;
+    use crate::runtime as async_rt;
     use crate::util::tests::{
         test_bind_to_any_port_helper, test_bind_to_unspecified_interface_helper,
     };

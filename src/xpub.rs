@@ -3,7 +3,7 @@ use crate::endpoint::Endpoint;
 use crate::error::ZmqResult;
 use crate::fair_queue::{FairQueue, QueueInner};
 use crate::message::*;
-use crate::transport::AcceptStopHandle;
+use crate::runtime::AcceptStopHandle;
 use crate::util::PeerIdentity;
 use crate::{CaptureSocket, SocketOptions};
 use crate::{
@@ -246,7 +246,7 @@ impl Socket for XPubSocket {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::async_rt;
+    use crate::runtime as async_rt;
     use crate::util::tests::{
         test_bind_to_any_port_helper, test_bind_to_unspecified_interface_helper,
     };

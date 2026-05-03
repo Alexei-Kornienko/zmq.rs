@@ -1,7 +1,7 @@
 use crate::backend::GenericSocketBackend;
 use crate::codec::{Message, ZmqFramedRead};
 use crate::fair_queue::FairQueue;
-use crate::transport::AcceptStopHandle;
+use crate::runtime::AcceptStopHandle;
 use crate::util::PeerIdentity;
 use crate::{
     CaptureSocket, Endpoint, MultiPeerBackend, Socket, SocketBackend, SocketEvent, SocketOptions,

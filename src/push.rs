@@ -1,6 +1,6 @@
 use crate::backend::GenericSocketBackend;
 use crate::codec::Message;
-use crate::transport::AcceptStopHandle;
+use crate::runtime::AcceptStopHandle;
 use crate::{
     CaptureSocket, Endpoint, MultiPeerBackend, Socket, SocketBackend, SocketEvent, SocketOptions,
     SocketSend, SocketType, ZmqMessage, ZmqResult,

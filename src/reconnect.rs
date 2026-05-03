@@ -4,10 +4,10 @@
 //! are disconnected. When a peer disconnects, a background task attempts to
 //! reconnect with exponential backoff.
 
-use crate::async_rt::task::{spawn, JoinHandle};
 use crate::backend::DisconnectNotifier;
 use crate::endpoint::Endpoint;
-use crate::transport;
+use crate::runtime;
+use crate::runtime::task::{spawn, JoinHandle};
 use crate::util::{greet_exchange, ready_exchange, PeerIdentity};
 use crate::MultiPeerBackend;
 
@@ -141,7 +141,7 @@ pub fn spawn_reconnect_task(
                 );
 
                 // Wait before attempting reconnection, but check for shutdown
-                let sleep_fut = crate::async_rt::task::sleep(current_interval).fuse();
+                let sleep_fut = crate::runtime::task::sleep(current_interval).fuse();
                 futures::pin_mut!(sleep_fut);
 
                 futures::select! {
@@ -220,7 +220,7 @@ async fn try_reconnect(
     backend: Arc<dyn MultiPeerBackend>,
 ) -> crate::ZmqResult<(PeerIdentity, Endpoint)> {
     // Attempt transport-level connection
-    let (mut raw_socket, resolved_endpoint) = transport::connect(endpoint).await?;
+    let (mut raw_socket, resolved_endpoint) = runtime::connect(endpoint).await?;
 
     // Perform ZMTP handshake
     greet_exchange(&mut raw_socket).await?;

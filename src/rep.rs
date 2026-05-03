@@ -2,7 +2,7 @@ use crate::codec::*;
 use crate::endpoint::Endpoint;
 use crate::error::*;
 use crate::fair_queue::{FairQueue, QueueInner};
-use crate::transport::AcceptStopHandle;
+use crate::runtime::AcceptStopHandle;
 use crate::*;
 use crate::{SocketType, ZmqResult};
 

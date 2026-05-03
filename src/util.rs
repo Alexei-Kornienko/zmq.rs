@@ -1,4 +1,5 @@
 use crate::codec::{CodecResult, FramedIo};
+use crate::runtime;
 use crate::*;
 
 use bytes::Bytes;
@@ -215,7 +216,7 @@ where
     F: Future<Output = ZmqResult<T>>,
 {
     match duration {
-        Some(duration) => match async_rt::task::timeout(duration, future).await {
+        Some(duration) => match runtime::task::timeout(duration, future).await {
             Ok(result) => result,
             Err(_) => Err(ZmqError::ConnectTimeout(duration)),
         },
@@ -238,7 +239,7 @@ fn is_retryable_connect_error(endpoint: &Endpoint, error: &ZmqError) -> bool {
 pub(crate) async fn connect_forever(endpoint: Endpoint) -> ZmqResult<(FramedIo, Endpoint)> {
     let mut try_num: u64 = 0;
     loop {
-        match transport::connect(&endpoint).await {
+        match runtime::connect(&endpoint).await {
             Ok(res) => return Ok(res),
             Err(e) if is_retryable_connect_error(&endpoint, &e) => {
                 if try_num < 5 {
@@ -249,7 +250,7 @@ pub(crate) async fn connect_forever(endpoint: Endpoint) -> ZmqResult<(FramedIo, 
                     std::f64::consts::E.powf(try_num as f64 / 3.0)
                         + rng.random_range(0.0f64..0.1f64)
                 };
-                async_rt::task::sleep(std::time::Duration::from_secs_f64(delay)).await;
+                runtime::task::sleep(std::time::Duration::from_secs_f64(delay)).await;
             }
             Err(e) => return Err(e),
         }

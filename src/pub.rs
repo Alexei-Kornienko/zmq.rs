@@ -1,10 +1,10 @@
 use crate::endpoint::Endpoint;
 use crate::error::ZmqResult;
 use crate::message::*;
-use crate::transport::AcceptStopHandle;
+use crate::runtime::AcceptStopHandle;
 use crate::util::PeerIdentity;
-use crate::{async_rt, CaptureSocket, SocketOptions};
 use crate::{codec::*, ZmqError};
+use crate::{runtime as async_rt, CaptureSocket, SocketOptions};
 use crate::{MultiPeerBackend, Socket, SocketBackend, SocketEvent, SocketSend, SocketType};
 
 use async_trait::async_trait;

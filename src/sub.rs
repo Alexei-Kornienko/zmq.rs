@@ -4,10 +4,10 @@ use crate::error::{ZmqError, ZmqResult};
 use crate::fair_queue::FairQueue;
 use crate::message::ZmqMessage;
 use crate::reconnect::ReconnectHandle;
+use crate::runtime::AcceptStopHandle;
 use crate::sub_backend::{
     connect_with_reconnect, SocketBinds, SubSocketBackend, SubscriptionMessageType,
 };
-use crate::transport::AcceptStopHandle;
 use crate::util::PeerIdentity;
 use crate::{
     MultiPeerBackend, Socket, SocketBackend, SocketEvent, SocketOptions, SocketRecv, SocketType,

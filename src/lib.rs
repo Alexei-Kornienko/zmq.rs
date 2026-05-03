@@ -1,6 +1,5 @@
 #![recursion_limit = "1024"]
 
-mod async_rt;
 mod backend;
 mod codec;
 mod dealer;
@@ -15,10 +14,10 @@ mod reconnect;
 mod rep;
 mod req;
 mod router;
+mod runtime;
 mod sub;
 mod sub_backend;
 mod task_handle;
-mod transport;
 pub mod util;
 mod xpub;
 mod xsub;
@@ -26,7 +25,7 @@ mod xsub;
 #[doc(hidden)]
 pub mod __async_rt {
     //! DO NOT USE! PRIVATE IMPLEMENTATION, EXPOSED ONLY FOR INTEGRATION TESTS.
-    pub use super::async_rt::*;
+    pub use super::runtime::*;
 }
 
 #[doc(hidden)]
@@ -50,7 +49,7 @@ pub use crate::xpub::*;
 pub use crate::xsub::*;
 
 use crate::codec::*;
-use crate::transport::AcceptStopHandle;
+use crate::runtime::AcceptStopHandle;
 use util::PeerIdentity;
 
 use async_trait::async_trait;
@@ -246,7 +245,7 @@ pub trait CaptureSocket: SocketSend {}
 
 #[allow(clippy::empty_line_after_outer_attr)]
 #[async_trait(?Send)]
-pub trait Socket: Sized{
+pub trait Socket: Sized {
     fn new() -> Self {
         Self::with_options(SocketOptions::default())
     }
@@ -289,7 +288,7 @@ pub trait Socket: Sized{
             }
         };
 
-        let (endpoint, stop_handle) = transport::begin_accept(endpoint, cback).await?;
+        let (endpoint, stop_handle) = runtime::begin_accept(endpoint, cback).await?;
 
         if let Some(monitor) = self.backend().monitor().lock().as_mut() {
             let _ = monitor.try_send(SocketEvent::Listening(endpoint.clone()));

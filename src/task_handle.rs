@@ -1,5 +1,5 @@
-use crate::async_rt;
 use crate::error::{ZmqError, ZmqResult};
+use crate::runtime;
 
 use futures::channel::oneshot;
 use thiserror::Error;
@@ -13,8 +13,8 @@ pub enum TaskError {
     #[error("Task cancelled")]
     Cancelled,
 }
-impl From<async_rt::task::JoinError> for TaskError {
-    fn from(err: async_rt::task::JoinError) -> Self {
+impl From<runtime::task::JoinError> for TaskError {
+    fn from(err: runtime::task::JoinError) -> Self {
         if err.is_panic() {
             TaskError::Panic
         } else {
@@ -27,13 +27,13 @@ impl From<async_rt::task::JoinError> for TaskError {
 pub struct TaskHandle<T> {
     // Using options to allow us to move resource without consuming `self`
     stop_channel: oneshot::Sender<()>,
-    join_handle: async_rt::task::JoinHandle<ZmqResult<T>>,
+    join_handle: runtime::task::JoinHandle<ZmqResult<T>>,
 }
 impl<T> TaskHandle<T> {
     #[allow(unused)]
     pub(crate) fn new(
         stop_channel: oneshot::Sender<()>,
-        join_handle: async_rt::task::JoinHandle<ZmqResult<T>>,
+        join_handle: runtime::task::JoinHandle<ZmqResult<T>>,
     ) -> Self {
         Self {
             stop_channel,

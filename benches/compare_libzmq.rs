@@ -146,7 +146,7 @@ fn bench_zmqrs_pub_sub(c: &mut Criterion) {
             group.warm_up_time(Duration::from_secs(2));
             for &msg_size in MSG_SIZES {
                 if n_subs == 64 && msg_size == 65536 {
-                    continue
+                    continue;
                 }
                 group.throughput(Throughput::Bytes((msg_size * n_subs) as u64));
                 group.bench_with_input(

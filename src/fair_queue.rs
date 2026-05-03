@@ -203,8 +203,8 @@ impl<S, K: Clone> FairQueue<S, K> {
 
 #[cfg(test)]
 mod test {
-    use crate::async_rt;
     use crate::fair_queue::FairQueue;
+    use crate::runtime as async_rt;
     use futures::task::noop_waker;
     use futures::{stream, Stream, StreamExt};
     use std::collections::VecDeque;
