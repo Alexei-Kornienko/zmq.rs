@@ -109,7 +109,8 @@ impl Socket for SubSocket {
     }
 }
 
-#[async_trait]
+#[cfg_attr(feature = "monoio-runtime", async_trait(?Send))]
+#[cfg_attr(not(feature = "monoio-runtime"), async_trait)]
 impl SocketRecv for SubSocket {
     async fn recv(&mut self) -> ZmqResult<ZmqMessage> {
         loop {

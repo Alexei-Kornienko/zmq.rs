@@ -22,7 +22,8 @@ pub struct PullSocket {
     binds: HashMap<Endpoint, AcceptStopHandle>,
 }
 
-#[async_trait]
+#[cfg_attr(feature = "monoio-runtime", async_trait(?Send))]
+#[cfg_attr(not(feature = "monoio-runtime"), async_trait)]
 impl Socket for PullSocket {
     fn with_options(options: SocketOptions) -> Self {
         let mut fair_queue = FairQueue::new(true);
@@ -61,7 +62,8 @@ impl Socket for PullSocket {
     }
 }
 
-#[async_trait]
+#[cfg_attr(feature = "monoio-runtime", async_trait(?Send))]
+#[cfg_attr(not(feature = "monoio-runtime"), async_trait)]
 impl SocketRecv for PullSocket {
     async fn recv(&mut self) -> ZmqResult<ZmqMessage> {
         loop {

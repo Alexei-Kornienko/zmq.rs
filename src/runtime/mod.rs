@@ -112,12 +112,53 @@ pub(crate) async fn connect(endpoint: &Endpoint) -> ZmqResult<(FramedIo, Endpoin
 ///
 /// # Panics
 /// Panics if the requested endpoint uses a transport type that isn't enabled.
+#[cfg(not(feature = "monoio-runtime"))]
 pub(crate) async fn begin_accept<T>(
     endpoint: Endpoint,
     cback: impl Fn(ZmqResult<(FramedIo, Endpoint)>) -> T + Send + 'static,
 ) -> ZmqResult<(Endpoint, AcceptStopHandle)>
 where
     T: std::future::Future<Output = ()> + Send + 'static,
+{
+    match endpoint {
+        Endpoint::Tcp(host, port) => {
+            #[cfg(feature = "tcp-transport")]
+            {
+                active::tcp::begin_accept(host, port, cback).await
+            }
+            #[cfg(not(feature = "tcp-transport"))]
+            {
+                let _ = (host, port, cback);
+                panic!("feature \"tcp-transport\" is not enabled")
+            }
+        }
+        Endpoint::Ipc(path) => {
+            #[cfg(all(feature = "ipc-transport", any(target_family = "unix", windows)))]
+            {
+                if let Some(path) = path {
+                    active::ipc::begin_accept(&path, cback).await
+                } else {
+                    Err(crate::error::ZmqError::Socket(
+                        "Cannot begin accepting peers at an unnamed ipc socket",
+                    ))
+                }
+            }
+            #[cfg(not(all(feature = "ipc-transport", any(target_family = "unix", windows))))]
+            {
+                let _ = (path, cback);
+                panic!("IPC transport is not available on this platform")
+            }
+        }
+    }
+}
+
+#[cfg(feature = "monoio-runtime")]
+pub(crate) async fn begin_accept<T>(
+    endpoint: Endpoint,
+    cback: impl Fn(ZmqResult<(FramedIo, Endpoint)>) -> T + 'static,
+) -> ZmqResult<(Endpoint, AcceptStopHandle)>
+where
+    T: std::future::Future<Output = ()> + 'static,
 {
     match endpoint {
         Endpoint::Tcp(host, port) => {

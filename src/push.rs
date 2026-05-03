@@ -24,7 +24,8 @@ impl Drop for PushSocket {
     }
 }
 
-#[async_trait]
+#[cfg_attr(feature = "monoio-runtime", async_trait(?Send))]
+#[cfg_attr(not(feature = "monoio-runtime"), async_trait)]
 impl Socket for PushSocket {
     fn with_options(options: SocketOptions) -> Self {
         Self {
@@ -52,7 +53,8 @@ impl Socket for PushSocket {
     }
 }
 
-#[async_trait]
+#[cfg_attr(feature = "monoio-runtime", async_trait(?Send))]
+#[cfg_attr(not(feature = "monoio-runtime"), async_trait)]
 impl SocketSend for PushSocket {
     async fn send(&mut self, message: ZmqMessage) -> ZmqResult<()> {
         self.backend

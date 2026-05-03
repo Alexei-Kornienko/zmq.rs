@@ -32,7 +32,11 @@ mod test {
     /// 1. Initial connection and subscription works
     /// 2. After PUB drops and restarts on same port, SUB reconnects
     /// 3. Subscription is re-established and messages flow again
-    #[async_rt::test]
+    #[cfg_attr(
+        feature = "monoio-runtime",
+        async_rt::test(driver = "uring", enable_timer = true)
+    )]
+    #[cfg_attr(not(feature = "monoio-runtime"), async_rt::test)]
     async fn test_our_sub_reconnects_to_their_restarted_pub() {
         pretty_env_logger::try_init().ok();
 
@@ -156,7 +160,11 @@ mod test {
     /// subscriptions automatically - this is expected libzmq behavior.
     /// For guaranteed subscription resync, applications should either
     /// use zmq.rs SUB (which has auto-resync) or manually resubscribe.
-    #[async_rt::test]
+    #[cfg_attr(
+        feature = "monoio-runtime",
+        async_rt::test(driver = "uring", enable_timer = true)
+    )]
+    #[cfg_attr(not(feature = "monoio-runtime"), async_rt::test)]
     async fn test_their_sub_reconnects_to_our_restarted_pub() {
         pretty_env_logger::try_init().ok();
 

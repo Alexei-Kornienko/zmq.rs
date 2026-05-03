@@ -8,15 +8,21 @@ mod test {
     use std::error::Error;
     use std::time::Duration;
 
+    #[cfg(not(feature = "monoio-runtime"))]
     fn assert_send<T: Send>() {}
 
+    #[cfg(not(feature = "monoio-runtime"))]
     #[test]
     fn split_halves_are_send() {
         assert_send::<zeromq::DealerSendHalf>();
         assert_send::<zeromq::DealerRecvHalf>();
     }
 
-    #[async_rt::test]
+    #[cfg_attr(
+        feature = "monoio-runtime",
+        async_rt::test(driver = "uring", enable_timer = true)
+    )]
+    #[cfg_attr(not(feature = "monoio-runtime"), async_rt::test)]
     async fn test_dealer_split_concurrent_send_recv() -> Result<(), Box<dyn Error>> {
         pretty_env_logger::try_init().ok();
 

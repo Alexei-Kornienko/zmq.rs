@@ -8,7 +8,25 @@ use zeromq::__async_rt as async_rt;
 use zeromq::prelude::*;
 use zeromq::ZmqMessage;
 
+use std::path::PathBuf;
 use std::time::Duration;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+fn ipv6_loopback_available() -> bool {
+    std::net::TcpListener::bind("[::1]:0").is_ok()
+}
+
+fn unique_ipc_endpoint(name: &str) -> (String, PathBuf) {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system time before unix epoch")
+        .as_nanos();
+    let path = std::env::temp_dir().join(format!(
+        "z-pub-sub-compliant-reverse-{name}-{}-{nanos}.sock",
+        std::process::id()
+    ));
+    (format!("ipc://{}", path.display()), path)
+}
 
 async fn setup_our_pub(bind_endpoint: &str) -> (zeromq::PubSocket, String) {
     let mut our_pub = zeromq::PubSocket::new();
@@ -41,7 +59,11 @@ fn setup_their_subs(
 mod test {
     use super::*;
 
-    #[async_rt::test]
+    #[cfg_attr(
+        feature = "monoio-runtime",
+        async_rt::test(driver = "uring", enable_timer = true)
+    )]
+    #[cfg_attr(not(feature = "monoio-runtime"), async_rt::test)]
     async fn test_our_pub_their_sub() {
         pretty_env_logger::try_init().ok();
 
@@ -97,24 +119,29 @@ mod test {
             }
         }
 
-        let endpoints = vec![
-            "tcp://127.0.0.1:0",
-            "tcp://[::1]:0",
-            "ipc://our_pub_test.sock",
-        ];
+        let (ipc, ipc_path) = unique_ipc_endpoint("a");
+        let mut endpoints = vec!["tcp://127.0.0.1:0".to_string(), ipc];
+        if ipv6_loopback_available() {
+            endpoints.push("tcp://[::1]:0".to_string());
+        }
 
         for e in endpoints {
             println!("Testing with endpoint {}", e);
-            do_test(e).await;
+            do_test(&e).await;
 
             // Clean up IPC socket files
             if let Some(path) = e.strip_prefix("ipc://") {
                 std::fs::remove_file(path).ok();
             }
         }
+        let _ = std::fs::remove_file(ipc_path);
     }
 
-    #[async_rt::test]
+    #[cfg_attr(
+        feature = "monoio-runtime",
+        async_rt::test(driver = "uring", enable_timer = true)
+    )]
+    #[cfg_attr(not(feature = "monoio-runtime"), async_rt::test)]
     async fn test_our_pub_their_sub_topic_filtering() {
         pretty_env_logger::try_init().ok();
 

@@ -1,18 +1,5 @@
 pub use ::monoio::{main, test};
 
-use crate::runtime::FramedIo;
-
-fn make_framed<T>(stream: T) -> FramedIo
-where
-    T: ::monoio::io::AsyncReadRent
-        + ::monoio::io::AsyncWriteRent
-        + ::monoio::io::Splitable
-        + 'static,
-{
-    let (read, write) = stream.into_split();
-    FramedIo::new(Box::new(read), Box::new(write))
-}
-
 pub mod task {
     use std::any::Any;
     use std::future::Future;
@@ -80,7 +67,6 @@ pub mod task {
 
 #[cfg(feature = "tcp-transport")]
 pub(crate) mod tcp {
-    use super::make_framed;
     use crate::endpoint::{Endpoint, Host, Port};
     use crate::runtime::FramedIo;
     use crate::runtime::{task, AcceptStopHandle};
@@ -89,6 +75,12 @@ pub(crate) mod tcp {
 
     use ::monoio::net::tcp::{TcpListener, TcpStream};
     use futures::{select, FutureExt};
+    use monoio::io::Splitable;
+
+    fn make_framed(stream: TcpStream) -> FramedIo {
+        let (read, write) = stream.into_split();
+        FramedIo::new_tcp(read, write)
+    }
 
     pub(crate) async fn connect(host: &Host, port: Port) -> ZmqResult<(FramedIo, Endpoint)> {
         let raw_socket = TcpStream::connect((host.to_string().as_str(), port)).await?;
@@ -102,10 +94,10 @@ pub(crate) mod tcp {
     pub(crate) async fn begin_accept<T>(
         mut host: Host,
         port: Port,
-        cback: impl Fn(ZmqResult<(FramedIo, Endpoint)>) -> T + Send + 'static,
+        cback: impl Fn(ZmqResult<(FramedIo, Endpoint)>) -> T + 'static,
     ) -> ZmqResult<(Endpoint, AcceptStopHandle)>
     where
-        T: std::future::Future<Output = ()> + Send + 'static,
+        T: std::future::Future<Output = ()> + 'static,
     {
         let listener = TcpListener::bind((host.to_string().as_str(), port))?;
         let resolved_addr = listener.local_addr()?;
@@ -156,7 +148,6 @@ pub(crate) mod tcp {
 
 #[cfg(all(feature = "ipc-transport", target_family = "unix"))]
 pub(crate) mod ipc {
-    use super::make_framed;
     use crate::endpoint::Endpoint;
     use crate::runtime::FramedIo;
     use crate::runtime::{task, AcceptStopHandle};
@@ -164,9 +155,16 @@ pub(crate) mod ipc {
     use crate::ZmqResult;
 
     use ::monoio::net::unix::{SocketAddr, UnixListener, UnixStream};
+    use ::monoio::net::ListenerOpts;
     use futures::channel::oneshot;
     use futures::{select, FutureExt};
+    use monoio::io::Splitable;
     use std::path::Path;
+
+    fn make_framed(stream: UnixStream) -> FramedIo {
+        let (read, write) = stream.into_split();
+        FramedIo::new_unix(read, write)
+    }
 
     fn pathname_from_unix_addr(addr: SocketAddr) -> Option<std::path::PathBuf> {
         addr.as_pathname().map(|a| a.to_owned())
@@ -181,17 +179,18 @@ pub(crate) mod ipc {
 
     pub(crate) async fn begin_accept<T>(
         path: &Path,
-        cback: impl Fn(ZmqResult<(FramedIo, Endpoint)>) -> T + Send + 'static,
+        cback: impl Fn(ZmqResult<(FramedIo, Endpoint)>) -> T + 'static,
     ) -> ZmqResult<(Endpoint, AcceptStopHandle)>
     where
-        T: std::future::Future<Output = ()> + Send + 'static,
+        T: std::future::Future<Output = ()> + 'static,
     {
         let wildcard: &Path = "*".as_ref();
         if path == wildcard {
             todo!("Need to implement support for wildcard paths!");
         }
 
-        let listener = UnixListener::bind(path)?;
+        let listener_opts = ListenerOpts::new().reuse_port(false).reuse_addr(false);
+        let listener = UnixListener::bind_with_config(path, &listener_opts)?;
         let resolved_addr = Some(path.to_owned());
         let listener_addr = resolved_addr.clone();
 
@@ -214,6 +213,15 @@ pub(crate) mod ipc {
                 }
             }
             drop(listener);
+            if let Some(listener_addr) = listener_addr {
+                if let Err(err) = std::fs::remove_file(&listener_addr) {
+                    log::warn!(
+                        "Could not delete unix socket at {}: {}",
+                        listener_addr.display(),
+                        err
+                    );
+                }
+            }
             Ok(())
         });
         Ok((

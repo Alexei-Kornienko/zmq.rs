@@ -39,7 +39,8 @@ impl Drop for RepSocket {
     }
 }
 
-#[async_trait]
+#[cfg_attr(feature = "monoio-runtime", async_trait(?Send))]
+#[cfg_attr(not(feature = "monoio-runtime"), async_trait)]
 impl Socket for RepSocket {
     fn with_options(options: SocketOptions) -> Self {
         let mut fair_queue = FairQueue::new(true);
@@ -81,7 +82,8 @@ impl Socket for RepSocket {
     }
 }
 
-#[async_trait]
+#[cfg_attr(feature = "monoio-runtime", async_trait(?Send))]
+#[cfg_attr(not(feature = "monoio-runtime"), async_trait)]
 impl MultiPeerBackend for RepSocketBackend {
     async fn peer_connected(self: Arc<Self>, peer_id: &PeerIdentity, io: FramedIo) {
         let (recv_queue, send_queue) = io.into_parts();
@@ -126,7 +128,8 @@ impl SocketBackend for RepSocketBackend {
     }
 }
 
-#[async_trait]
+#[cfg_attr(feature = "monoio-runtime", async_trait(?Send))]
+#[cfg_attr(not(feature = "monoio-runtime"), async_trait)]
 impl SocketSend for RepSocket {
     async fn send(&mut self, mut message: ZmqMessage) -> ZmqResult<()> {
         match self.current_request.take() {
@@ -152,7 +155,8 @@ impl SocketSend for RepSocket {
     }
 }
 
-#[async_trait]
+#[cfg_attr(feature = "monoio-runtime", async_trait(?Send))]
+#[cfg_attr(not(feature = "monoio-runtime"), async_trait)]
 impl SocketRecv for RepSocket {
     async fn recv(&mut self) -> ZmqResult<ZmqMessage> {
         loop {

@@ -97,7 +97,8 @@ impl SocketBackend for PubSocketBackend {
     }
 }
 
-#[async_trait]
+#[cfg_attr(feature = "monoio-runtime", async_trait(?Send))]
+#[cfg_attr(not(feature = "monoio-runtime"), async_trait)]
 impl MultiPeerBackend for PubSocketBackend {
     async fn peer_connected(self: Arc<Self>, peer_id: &PeerIdentity, io: FramedIo) {
         let (mut recv_queue, send_queue) = io.into_parts();
@@ -218,7 +219,8 @@ impl Drop for PubSocket {
     }
 }
 
-#[async_trait]
+#[cfg_attr(feature = "monoio-runtime", async_trait(?Send))]
+#[cfg_attr(not(feature = "monoio-runtime"), async_trait)]
 impl SocketSend for PubSocket {
     async fn send(&mut self, message: ZmqMessage) -> ZmqResult<()> {
         self.process_connections()?;
@@ -269,7 +271,8 @@ impl SocketSend for PubSocket {
 
 impl CaptureSocket for PubSocket {}
 
-#[async_trait]
+#[cfg_attr(feature = "monoio-runtime", async_trait(?Send))]
+#[cfg_attr(not(feature = "monoio-runtime"), async_trait)]
 impl Socket for PubSocket {
     fn with_options(options: SocketOptions) -> Self {
         let (conn_tx, conn_rx) = std::sync::mpsc::channel();
@@ -312,20 +315,32 @@ mod tests {
     use crate::ZmqResult;
     use std::net::IpAddr;
 
-    #[async_rt::test]
+    #[cfg_attr(
+        feature = "monoio-runtime",
+        async_rt::test(driver = "uring", enable_timer = true)
+    )]
+    #[cfg_attr(not(feature = "monoio-runtime"), async_rt::test)]
     async fn test_bind_to_any_port() -> ZmqResult<()> {
         let s = PubSocket::new();
         test_bind_to_any_port_helper(s).await
     }
 
-    #[async_rt::test]
+    #[cfg_attr(
+        feature = "monoio-runtime",
+        async_rt::test(driver = "uring", enable_timer = true)
+    )]
+    #[cfg_attr(not(feature = "monoio-runtime"), async_rt::test)]
     async fn test_bind_to_any_ipv4_interface() -> ZmqResult<()> {
         let any_ipv4: IpAddr = "0.0.0.0".parse().unwrap();
         let s = PubSocket::new();
         test_bind_to_unspecified_interface_helper(any_ipv4, s, 4000).await
     }
 
-    #[async_rt::test]
+    #[cfg_attr(
+        feature = "monoio-runtime",
+        async_rt::test(driver = "uring", enable_timer = true)
+    )]
+    #[cfg_attr(not(feature = "monoio-runtime"), async_rt::test)]
     async fn test_bind_to_any_ipv6_interface() -> ZmqResult<()> {
         let any_ipv6: IpAddr = "::".parse().unwrap();
         let s = PubSocket::new();

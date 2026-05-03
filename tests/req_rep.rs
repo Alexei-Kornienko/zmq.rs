@@ -11,7 +11,11 @@ use std::time::Duration;
 mod test {
 
     use super::*;
-    #[async_rt::test]
+    #[cfg_attr(
+        feature = "monoio-runtime",
+        async_rt::test(driver = "uring", enable_timer = true)
+    )]
+    #[cfg_attr(not(feature = "monoio-runtime"), async_rt::test)]
     async fn test_req_rep_sockets() -> Result<(), Box<dyn Error>> {
         pretty_env_logger::try_init().ok();
 
@@ -41,7 +45,11 @@ mod test {
         Ok(())
     }
 
-    #[async_rt::test]
+    #[cfg_attr(
+        feature = "monoio-runtime",
+        async_rt::test(driver = "uring", enable_timer = true)
+    )]
+    #[cfg_attr(not(feature = "monoio-runtime"), async_rt::test)]
     async fn test_many_req_rep_sockets() -> Result<(), Box<dyn Error>> {
         pretty_env_logger::try_init().ok();
 

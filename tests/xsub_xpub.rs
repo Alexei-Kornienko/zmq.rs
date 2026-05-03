@@ -18,7 +18,11 @@ mod test {
             .expect("Failed to parse port")
     }
 
-    #[async_rt::test]
+    #[cfg_attr(
+        feature = "monoio-runtime",
+        async_rt::test(driver = "uring", enable_timer = true)
+    )]
+    #[cfg_attr(not(feature = "monoio-runtime"), async_rt::test)]
     async fn test_xsub_basic_pubsub_and_topic_filter() {
         pretty_env_logger::try_init().ok();
 
@@ -69,7 +73,11 @@ mod test {
         assert_eq!(received, "topic1-message");
     }
 
-    #[async_rt::test]
+    #[cfg_attr(
+        feature = "monoio-runtime",
+        async_rt::test(driver = "uring", enable_timer = true)
+    )]
+    #[cfg_attr(not(feature = "monoio-runtime"), async_rt::test)]
     async fn test_xsub_receives_unsubscribe() {
         pretty_env_logger::try_init().ok();
 
@@ -112,7 +120,11 @@ mod test {
         handle.await.expect("Task failed");
     }
 
-    #[async_rt::test]
+    #[cfg_attr(
+        feature = "monoio-runtime",
+        async_rt::test(driver = "uring", enable_timer = true)
+    )]
+    #[cfg_attr(not(feature = "monoio-runtime"), async_rt::test)]
     async fn test_xsub_sends_arbitrary_messages_to_xpub() {
         pretty_env_logger::try_init().ok();
 
@@ -157,7 +169,11 @@ mod test {
         assert_eq!(received.get(1).unwrap().as_ref(), b"frame-2");
     }
 
-    #[async_rt::test]
+    #[cfg_attr(
+        feature = "monoio-runtime",
+        async_rt::test(driver = "uring", enable_timer = true)
+    )]
+    #[cfg_attr(not(feature = "monoio-runtime"), async_rt::test)]
     async fn test_xsub_fanout_to_multiple_xpub_peers() {
         pretty_env_logger::try_init().ok();
 
@@ -204,7 +220,11 @@ mod test {
         assert_eq!(msg_b.get(0).unwrap().as_ref(), b"fanout-message");
     }
 
-    #[async_rt::test]
+    #[cfg_attr(
+        feature = "monoio-runtime",
+        async_rt::test(driver = "uring", enable_timer = true)
+    )]
+    #[cfg_attr(not(feature = "monoio-runtime"), async_rt::test)]
     async fn test_xsub_reconnects_to_restarted_pub() {
         pretty_env_logger::try_init().ok();
 
@@ -252,7 +272,11 @@ mod test {
         assert_eq!(reconnected.get(0).unwrap().as_ref(), b"reconnected-message");
     }
 
-    #[async_rt::test]
+    #[cfg_attr(
+        feature = "monoio-runtime",
+        async_rt::test(driver = "uring", enable_timer = true)
+    )]
+    #[cfg_attr(not(feature = "monoio-runtime"), async_rt::test)]
     async fn test_xsub_resubscribes_to_restarted_xpub() {
         pretty_env_logger::try_init().ok();
 
@@ -313,7 +337,11 @@ mod test {
         assert_eq!(msg.get(0).unwrap().as_ref(), b"topic-message");
     }
 
-    #[async_rt::test]
+    #[cfg_attr(
+        feature = "monoio-runtime",
+        async_rt::test(driver = "uring", enable_timer = true)
+    )]
+    #[cfg_attr(not(feature = "monoio-runtime"), async_rt::test)]
     async fn test_xsub_xpub_proxy_end_to_end() {
         pretty_env_logger::try_init().ok();
 

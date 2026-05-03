@@ -213,7 +213,8 @@ impl SocketOptions {
     }
 }
 
-#[async_trait]
+#[cfg_attr(feature = "monoio-runtime", async_trait(?Send))]
+#[cfg_attr(not(feature = "monoio-runtime"), async_trait)]
 pub trait MultiPeerBackend: SocketBackend {
     /// This should not be public..
     /// Find a better way of doing this
@@ -222,19 +223,31 @@ pub trait MultiPeerBackend: SocketBackend {
     fn peer_disconnected(&self, peer_id: &PeerIdentity);
 }
 
-pub trait SocketBackend: Send + Sync {
+#[cfg(not(feature = "monoio-runtime"))]
+pub trait SocketBackendThreadSafety: Send + Sync {}
+#[cfg(not(feature = "monoio-runtime"))]
+impl<T: Send + Sync> SocketBackendThreadSafety for T {}
+
+#[cfg(feature = "monoio-runtime")]
+pub trait SocketBackendThreadSafety {}
+#[cfg(feature = "monoio-runtime")]
+impl<T> SocketBackendThreadSafety for T {}
+
+pub trait SocketBackend: SocketBackendThreadSafety {
     fn socket_type(&self) -> SocketType;
     fn socket_options(&self) -> &SocketOptions;
     fn shutdown(&self);
     fn monitor(&self) -> &Mutex<Option<mpsc::Sender<SocketEvent>>>;
 }
 
-#[async_trait]
+#[cfg_attr(feature = "monoio-runtime", async_trait(?Send))]
+#[cfg_attr(not(feature = "monoio-runtime"), async_trait)]
 pub trait SocketRecv {
     async fn recv(&mut self) -> ZmqResult<ZmqMessage>;
 }
 
-#[async_trait]
+#[cfg_attr(feature = "monoio-runtime", async_trait(?Send))]
+#[cfg_attr(not(feature = "monoio-runtime"), async_trait)]
 pub trait SocketSend {
     async fn send(&mut self, message: ZmqMessage) -> ZmqResult<()>;
 }

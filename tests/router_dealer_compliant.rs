@@ -48,7 +48,11 @@ mod test {
         (their_dealer, their_monitor)
     }
 
-    #[async_rt::test]
+    #[cfg_attr(
+        feature = "monoio-runtime",
+        async_rt::test(driver = "uring", enable_timer = true)
+    )]
+    #[cfg_attr(not(feature = "monoio-runtime"), async_rt::test)]
     async fn test_our_router_their_dealer() {
         pretty_env_logger::try_init().ok();
 
@@ -127,7 +131,11 @@ mod test {
         our_dealer
     }
 
-    #[async_rt::test]
+    #[cfg_attr(
+        feature = "monoio-runtime",
+        async_rt::test(driver = "uring", enable_timer = true)
+    )]
+    #[cfg_attr(not(feature = "monoio-runtime"), async_rt::test)]
     async fn test_their_router_our_dealer() {
         pretty_env_logger::try_init().ok();
 
@@ -186,7 +194,11 @@ mod test {
     // Test 3: Multiple DEALERs to one ROUTER (load balancing)
     // =========================================================================
 
-    #[async_rt::test]
+    #[cfg_attr(
+        feature = "monoio-runtime",
+        async_rt::test(driver = "uring", enable_timer = true)
+    )]
+    #[cfg_attr(not(feature = "monoio-runtime"), async_rt::test)]
     async fn test_our_router_multiple_their_dealers() {
         pretty_env_logger::try_init().ok();
 

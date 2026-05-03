@@ -33,7 +33,8 @@ impl Drop for ReqSocket {
     }
 }
 
-#[async_trait]
+#[cfg_attr(feature = "monoio-runtime", async_trait(?Send))]
+#[cfg_attr(not(feature = "monoio-runtime"), async_trait)]
 impl SocketSend for ReqSocket {
     async fn send(&mut self, mut message: ZmqMessage) -> ZmqResult<()> {
         if self.current_request.is_some() {
@@ -68,7 +69,8 @@ impl SocketSend for ReqSocket {
     }
 }
 
-#[async_trait]
+#[cfg_attr(feature = "monoio-runtime", async_trait(?Send))]
+#[cfg_attr(not(feature = "monoio-runtime"), async_trait)]
 impl SocketRecv for ReqSocket {
     async fn recv(&mut self) -> ZmqResult<ZmqMessage> {
         match self.current_request.take() {
@@ -104,7 +106,8 @@ impl SocketRecv for ReqSocket {
     }
 }
 
-#[async_trait]
+#[cfg_attr(feature = "monoio-runtime", async_trait(?Send))]
+#[cfg_attr(not(feature = "monoio-runtime"), async_trait)]
 impl Socket for ReqSocket {
     fn with_options(options: SocketOptions) -> Self {
         Self {
@@ -134,7 +137,8 @@ impl Socket for ReqSocket {
     }
 }
 
-#[async_trait]
+#[cfg_attr(feature = "monoio-runtime", async_trait(?Send))]
+#[cfg_attr(not(feature = "monoio-runtime"), async_trait)]
 impl MultiPeerBackend for ReqSocketBackend {
     async fn peer_connected(self: Arc<Self>, peer_id: &PeerIdentity, io: FramedIo) {
         let (recv_queue, send_queue) = io.into_parts();

@@ -11,7 +11,11 @@ fn tcp_endpoint(endpoint: Endpoint) -> String {
     }
 }
 
-#[async_rt::test]
+#[cfg_attr(
+    feature = "monoio-runtime",
+    async_rt::test(driver = "uring", enable_timer = true)
+)]
+#[cfg_attr(not(feature = "monoio-runtime"), async_rt::test)]
 async fn pub_sub_delivers_large_message() {
     let payload = vec![0xAB; 300_000];
 
@@ -35,7 +39,11 @@ async fn pub_sub_delivers_large_message() {
     assert_eq!(received.get(0).unwrap().as_ref(), payload.as_slice());
 }
 
-#[async_rt::test]
+#[cfg_attr(
+    feature = "monoio-runtime",
+    async_rt::test(driver = "uring", enable_timer = true)
+)]
+#[cfg_attr(not(feature = "monoio-runtime"), async_rt::test)]
 async fn xpub_sub_delivers_large_message() {
     let payload = vec![0xCD; 300_000];
 
@@ -63,7 +71,11 @@ async fn xpub_sub_delivers_large_message() {
     assert_eq!(received.get(0).unwrap().as_ref(), payload.as_slice());
 }
 
-#[async_rt::test]
+#[cfg_attr(
+    feature = "monoio-runtime",
+    async_rt::test(driver = "uring", enable_timer = true)
+)]
+#[cfg_attr(not(feature = "monoio-runtime"), async_rt::test)]
 async fn xsub_xpub_delivers_large_message() {
     let payload = vec![0xEF; 300_000];
 

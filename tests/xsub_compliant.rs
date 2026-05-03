@@ -8,7 +8,11 @@ use std::time::Duration;
 mod test {
     use super::*;
 
-    #[async_rt::test]
+    #[cfg_attr(
+        feature = "monoio-runtime",
+        async_rt::test(driver = "uring", enable_timer = true)
+    )]
+    #[cfg_attr(not(feature = "monoio-runtime"), async_rt::test)]
     async fn test_their_pub_our_xsub() {
         pretty_env_logger::try_init().ok();
 
@@ -43,7 +47,11 @@ mod test {
         assert_eq!(msg.get(0).unwrap().as_ref(), b"topic-message");
     }
 
-    #[async_rt::test]
+    #[cfg_attr(
+        feature = "monoio-runtime",
+        async_rt::test(driver = "uring", enable_timer = true)
+    )]
+    #[cfg_attr(not(feature = "monoio-runtime"), async_rt::test)]
     async fn test_our_xsub_their_xpub() {
         pretty_env_logger::try_init().ok();
 

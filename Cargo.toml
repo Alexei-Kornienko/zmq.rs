@@ -15,7 +15,7 @@ rust-version = "1.85.0"
 [features]
 default = ["tokio-runtime", "all-transport"]
 tokio-runtime = ["tokio", "tokio-util"]
-monoio-runtime = ["monoio"]
+monoio-runtime = ["monoio", "monoio/sync"]
 async-std-runtime = ["async-std"]
 async-dispatcher-runtime = ["async-std", "async-dispatcher"]
 async-dispatcher-macros = ["async-dispatcher/macros"]

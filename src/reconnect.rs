@@ -63,7 +63,10 @@ impl ReconnectHandle {
 }
 
 /// Type for a function that registers disconnect notifiers with a backend.
+#[cfg(not(feature = "monoio-runtime"))]
 pub type RegisterDisconnectFn = Box<dyn Fn(PeerIdentity, DisconnectNotifier) + Send + Sync>;
+#[cfg(feature = "monoio-runtime")]
+pub type RegisterDisconnectFn = Box<dyn Fn(PeerIdentity, DisconnectNotifier)>;
 
 /// Spawns a reconnection task for a single endpoint.
 ///

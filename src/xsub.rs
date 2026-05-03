@@ -108,7 +108,8 @@ impl Socket for XSubSocket {
     }
 }
 
-#[async_trait]
+#[cfg_attr(feature = "monoio-runtime", async_trait(?Send))]
+#[cfg_attr(not(feature = "monoio-runtime"), async_trait)]
 impl SocketRecv for XSubSocket {
     async fn recv(&mut self) -> ZmqResult<crate::ZmqMessage> {
         loop {
@@ -131,7 +132,8 @@ impl SocketRecv for XSubSocket {
     }
 }
 
-#[async_trait]
+#[cfg_attr(feature = "monoio-runtime", async_trait(?Send))]
+#[cfg_attr(not(feature = "monoio-runtime"), async_trait)]
 impl SocketSend for XSubSocket {
     async fn send(&mut self, message: crate::ZmqMessage) -> ZmqResult<()> {
         // If the message is a subscription frame (0x01/0x00 prefix), update
@@ -155,20 +157,32 @@ mod tests {
     use crate::ZmqResult;
     use std::net::IpAddr;
 
-    #[async_rt::test]
+    #[cfg_attr(
+        feature = "monoio-runtime",
+        async_rt::test(driver = "uring", enable_timer = true)
+    )]
+    #[cfg_attr(not(feature = "monoio-runtime"), async_rt::test)]
     async fn test_bind_to_any_port() -> ZmqResult<()> {
         let s = XSubSocket::new();
         test_bind_to_any_port_helper(s).await
     }
 
-    #[async_rt::test]
+    #[cfg_attr(
+        feature = "monoio-runtime",
+        async_rt::test(driver = "uring", enable_timer = true)
+    )]
+    #[cfg_attr(not(feature = "monoio-runtime"), async_rt::test)]
     async fn test_bind_to_any_ipv4_interface() -> ZmqResult<()> {
         let any_ipv4: IpAddr = "0.0.0.0".parse().unwrap();
         let s = XSubSocket::new();
         test_bind_to_unspecified_interface_helper(any_ipv4, s, 4040).await
     }
 
-    #[async_rt::test]
+    #[cfg_attr(
+        feature = "monoio-runtime",
+        async_rt::test(driver = "uring", enable_timer = true)
+    )]
+    #[cfg_attr(not(feature = "monoio-runtime"), async_rt::test)]
     async fn test_bind_to_any_ipv6_interface() -> ZmqResult<()> {
         let any_ipv6: IpAddr = "::".parse().unwrap();
         let s = XSubSocket::new();

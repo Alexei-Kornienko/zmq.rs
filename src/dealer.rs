@@ -28,7 +28,8 @@ impl Drop for DealerSocket {
     }
 }
 
-#[async_trait]
+#[cfg_attr(feature = "monoio-runtime", async_trait(?Send))]
+#[cfg_attr(not(feature = "monoio-runtime"), async_trait)]
 impl Socket for DealerSocket {
     fn with_options(options: SocketOptions) -> Self {
         let mut fair_queue = FairQueue::new(true);
@@ -67,7 +68,8 @@ impl Socket for DealerSocket {
     }
 }
 
-#[async_trait]
+#[cfg_attr(feature = "monoio-runtime", async_trait(?Send))]
+#[cfg_attr(not(feature = "monoio-runtime"), async_trait)]
 impl SocketRecv for DealerSocket {
     async fn recv(&mut self) -> ZmqResult<ZmqMessage> {
         loop {
@@ -92,7 +94,8 @@ impl SocketRecv for DealerSocket {
     }
 }
 
-#[async_trait]
+#[cfg_attr(feature = "monoio-runtime", async_trait(?Send))]
+#[cfg_attr(not(feature = "monoio-runtime"), async_trait)]
 impl SocketSend for DealerSocket {
     async fn send(&mut self, message: ZmqMessage) -> ZmqResult<()> {
         self.backend
@@ -162,7 +165,8 @@ pub struct DealerRecvHalf {
     fair_queue: FairQueue<ZmqFramedRead, PeerIdentity>,
 }
 
-#[async_trait]
+#[cfg_attr(feature = "monoio-runtime", async_trait(?Send))]
+#[cfg_attr(not(feature = "monoio-runtime"), async_trait)]
 impl SocketSend for DealerSendHalf {
     async fn send(&mut self, message: ZmqMessage) -> ZmqResult<()> {
         self.inner
@@ -175,7 +179,8 @@ impl SocketSend for DealerSendHalf {
 
 impl CaptureSocket for DealerSendHalf {}
 
-#[async_trait]
+#[cfg_attr(feature = "monoio-runtime", async_trait(?Send))]
+#[cfg_attr(not(feature = "monoio-runtime"), async_trait)]
 impl SocketRecv for DealerRecvHalf {
     async fn recv(&mut self) -> ZmqResult<ZmqMessage> {
         loop {

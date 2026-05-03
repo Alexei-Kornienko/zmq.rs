@@ -9,9 +9,11 @@ mod test {
     use std::error::Error;
     use std::time::Duration;
 
+    #[cfg(not(feature = "monoio-runtime"))]
     fn assert_send<T: Send>() {}
     fn assert_clone<T: Clone>() {}
 
+    #[cfg(not(feature = "monoio-runtime"))]
     #[test]
     fn split_halves_are_send() {
         assert_send::<zeromq::RouterSendHalf>();
@@ -23,7 +25,11 @@ mod test {
         assert_clone::<zeromq::RouterSendHalf>();
     }
 
-    #[async_rt::test]
+    #[cfg_attr(
+        feature = "monoio-runtime",
+        async_rt::test(driver = "uring", enable_timer = true)
+    )]
+    #[cfg_attr(not(feature = "monoio-runtime"), async_rt::test)]
     async fn test_router_split_concurrent_send_recv() -> Result<(), Box<dyn Error>> {
         pretty_env_logger::try_init().ok();
 
@@ -77,7 +83,11 @@ mod test {
         Ok(())
     }
 
-    #[async_rt::test]
+    #[cfg_attr(
+        feature = "monoio-runtime",
+        async_rt::test(driver = "uring", enable_timer = true)
+    )]
+    #[cfg_attr(not(feature = "monoio-runtime"), async_rt::test)]
     async fn test_router_split_send_half_clone_concurrent_send() -> Result<(), Box<dyn Error>> {
         pretty_env_logger::try_init().ok();
 

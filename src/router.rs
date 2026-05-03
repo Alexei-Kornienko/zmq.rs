@@ -29,7 +29,8 @@ impl Drop for RouterSocket {
     }
 }
 
-#[async_trait]
+#[cfg_attr(feature = "monoio-runtime", async_trait(?Send))]
+#[cfg_attr(not(feature = "monoio-runtime"), async_trait)]
 impl Socket for RouterSocket {
     fn with_options(options: SocketOptions) -> Self {
         let mut fair_queue = FairQueue::new(true);
@@ -68,7 +69,8 @@ impl Socket for RouterSocket {
     }
 }
 
-#[async_trait]
+#[cfg_attr(feature = "monoio-runtime", async_trait(?Send))]
+#[cfg_attr(not(feature = "monoio-runtime"), async_trait)]
 impl SocketRecv for RouterSocket {
     async fn recv(&mut self) -> ZmqResult<ZmqMessage> {
         loop {
@@ -96,7 +98,8 @@ impl SocketRecv for RouterSocket {
     }
 }
 
-#[async_trait]
+#[cfg_attr(feature = "monoio-runtime", async_trait(?Send))]
+#[cfg_attr(not(feature = "monoio-runtime"), async_trait)]
 impl SocketSend for RouterSocket {
     async fn send(&mut self, mut message: ZmqMessage) -> ZmqResult<()> {
         if message.len() <= 1 {
@@ -171,7 +174,8 @@ pub struct RouterRecvHalf {
     fair_queue: FairQueue<ZmqFramedRead, PeerIdentity>,
 }
 
-#[async_trait]
+#[cfg_attr(feature = "monoio-runtime", async_trait(?Send))]
+#[cfg_attr(not(feature = "monoio-runtime"), async_trait)]
 impl SocketSend for RouterSendHalf {
     async fn send(&mut self, mut message: ZmqMessage) -> ZmqResult<()> {
         if message.len() <= 1 {
@@ -190,7 +194,8 @@ impl SocketSend for RouterSendHalf {
     }
 }
 
-#[async_trait]
+#[cfg_attr(feature = "monoio-runtime", async_trait(?Send))]
+#[cfg_attr(not(feature = "monoio-runtime"), async_trait)]
 impl SocketRecv for RouterRecvHalf {
     async fn recv(&mut self) -> ZmqResult<ZmqMessage> {
         loop {

@@ -8,7 +8,11 @@ mod test {
 
     use std::time::Duration;
 
-    #[async_rt::test]
+    #[cfg_attr(
+        feature = "monoio-runtime",
+        async_rt::test(driver = "uring", enable_timer = true)
+    )]
+    #[cfg_attr(not(feature = "monoio-runtime"), async_rt::test)]
     async fn test_router_send_requires_identity_frame() {
         pretty_env_logger::try_init().ok();
 
@@ -31,7 +35,11 @@ mod test {
         );
     }
 
-    #[async_rt::test]
+    #[cfg_attr(
+        feature = "monoio-runtime",
+        async_rt::test(driver = "uring", enable_timer = true)
+    )]
+    #[cfg_attr(not(feature = "monoio-runtime"), async_rt::test)]
     async fn test_router_split_send_requires_identity_frame() {
         pretty_env_logger::try_init().ok();
 

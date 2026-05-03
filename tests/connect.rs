@@ -14,7 +14,11 @@ fn unique_ipc_endpoint(name: &str) -> (String, PathBuf) {
     (format!("ipc://{}", path.display()), path)
 }
 
-#[async_rt::test]
+#[cfg_attr(
+    feature = "monoio-runtime",
+    async_rt::test(driver = "uring", enable_timer = true)
+)]
+#[cfg_attr(not(feature = "monoio-runtime"), async_rt::test)]
 async fn ipc_connect_before_bind_retries_until_bind() {
     let (endpoint, path) = unique_ipc_endpoint("connect-before-bind");
     let subscriber_endpoint = endpoint.clone();
@@ -62,7 +66,11 @@ async fn ipc_connect_before_bind_retries_until_bind() {
     let _ = std::fs::remove_file(path);
 }
 
-#[async_rt::test]
+#[cfg_attr(
+    feature = "monoio-runtime",
+    async_rt::test(driver = "uring", enable_timer = true)
+)]
+#[cfg_attr(not(feature = "monoio-runtime"), async_rt::test)]
 async fn connect_timeout_expires_for_missing_ipc_socket() {
     let (endpoint, _path) = unique_ipc_endpoint("missing");
     let mut options = SocketOptions::default();
@@ -77,7 +85,11 @@ async fn connect_timeout_expires_for_missing_ipc_socket() {
     assert!(matches!(err, ZmqError::ConnectTimeout(_)), "{err:?}");
 }
 
-#[async_rt::test]
+#[cfg_attr(
+    feature = "monoio-runtime",
+    async_rt::test(driver = "uring", enable_timer = true)
+)]
+#[cfg_attr(not(feature = "monoio-runtime"), async_rt::test)]
 async fn ipc_close_allows_rebinding_same_path() {
     let (endpoint, path) = unique_ipc_endpoint("rebind");
 
@@ -101,7 +113,11 @@ async fn ipc_close_allows_rebinding_same_path() {
     let _ = std::fs::remove_file(path);
 }
 
-#[async_rt::test]
+#[cfg_attr(
+    feature = "monoio-runtime",
+    async_rt::test(driver = "uring", enable_timer = true)
+)]
+#[cfg_attr(not(feature = "monoio-runtime"), async_rt::test)]
 async fn no_connect_timeout_allows_delayed_ipc_bind() {
     let (endpoint, path) = unique_ipc_endpoint("no-timeout");
     let dealer_endpoint = endpoint.clone();

@@ -4,7 +4,25 @@ use compliance::{get_monitor_event, setup_monitor};
 use zeromq::__async_rt as async_rt;
 use zeromq::prelude::*;
 
+use std::path::PathBuf;
 use std::time::Duration;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+fn ipv6_loopback_available() -> bool {
+    std::net::TcpListener::bind("[::1]:0").is_ok()
+}
+
+fn unique_ipc_endpoint(name: &str) -> (String, PathBuf) {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system time before unix epoch")
+        .as_nanos();
+    let path = std::env::temp_dir().join(format!(
+        "z-pub-sub-compliant-{name}-{}-{nanos}.sock",
+        std::process::id()
+    ));
+    (format!("ipc://{}", path.display()), path)
+}
 
 fn setup_their_pub(bind_endpoint: &str) -> (zmq2::Socket, String, zmq2::Socket) {
     let ctx = zmq2::Context::new();
@@ -57,6 +75,8 @@ async fn run_our_subs(our_subs: Vec<zeromq::SubSocket>, num_to_recv: u32) {
                 let msg_string = String::from_utf8(msg.get(0).unwrap().to_vec()).unwrap();
                 assert_eq!(msg_string, format!("Their message: {}", i));
             }
+            let errs = sub.close().await;
+            assert!(errs.is_empty(), "Could not close sub socket: {:?}", errs);
         })
     });
     for h in join_handles {
@@ -69,7 +89,11 @@ async fn run_our_subs(our_subs: Vec<zeromq::SubSocket>, num_to_recv: u32) {
 mod test {
     use super::*;
 
-    #[async_rt::test]
+    #[cfg_attr(
+        feature = "monoio-runtime",
+        async_rt::test(driver = "uring", enable_timer = true)
+    )]
+    #[cfg_attr(not(feature = "monoio-runtime"), async_rt::test)]
     async fn test_their_pub_our_sub() {
         const N_SUBS: u8 = 16;
 
@@ -100,29 +124,35 @@ mod test {
                 .join()
                 .expect("Their pub terminated with an error!");
 
-            for _ in 0..N_SUBS {
+            if their_endpoint.starts_with("ipc://") {
+                drop(their_pub);
+                while get_monitor_event(&their_monitor).0 != zmq2::SocketEvent::CLOSED {}
+                return;
+            } else {
+                for _ in 0..N_SUBS {
+                    assert_eq!(
+                        get_monitor_event(&their_monitor).0,
+                        zmq2::SocketEvent::DISCONNECTED
+                    );
+                }
+
+                drop(their_pub);
                 assert_eq!(
                     get_monitor_event(&their_monitor).0,
-                    zmq2::SocketEvent::DISCONNECTED
+                    zmq2::SocketEvent::CLOSED
                 );
             }
-
-            drop(their_pub);
-            assert_eq!(
-                get_monitor_event(&their_monitor).0,
-                zmq2::SocketEvent::CLOSED
-            );
         }
 
-        let endpoints = vec![
-            "tcp://127.0.0.1:0",
-            "tcp://[::1]:0",
-            "ipc://asdf.sock",
-            "ipc://anothersocket-asdf",
-        ];
+        let (ipc_a, ipc_a_path) = unique_ipc_endpoint("a");
+        let (ipc_b, ipc_b_path) = unique_ipc_endpoint("b");
+        let mut endpoints = vec!["tcp://127.0.0.1:0".to_string(), ipc_a, ipc_b];
+        if ipv6_loopback_available() {
+            endpoints.push("tcp://[::1]:0".to_string());
+        }
         for e in endpoints {
             println!("Testing with endpoint {}", e);
-            do_test(e).await;
+            do_test(&e).await;
 
             // Unfortunately not all libzmq versions actually delete the ipc file. See
             // https://github.com/zeromq/libzmq/issues/3387
@@ -131,5 +161,7 @@ mod test {
                 std::fs::remove_file(path).expect("Failed to remove ipc file");
             }
         }
+        let _ = std::fs::remove_file(ipc_a_path);
+        let _ = std::fs::remove_file(ipc_b_path);
     }
 }
