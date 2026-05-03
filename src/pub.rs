@@ -225,10 +225,11 @@ impl SocketSend for PubSocket {
         self.process_subscriptions()?;
 
         let first_frame = match message.get(0) {
-            Some(frame) => frame,
+            Some(frame) => frame.clone(),
             None => return Ok(()), // Empty message, nothing to publish
         };
 
+        let msg_envelope = Message::Message(message);
         let fanout = self
             .subscribers
             .iter_mut()
@@ -239,13 +240,7 @@ impl SocketSend for PubSocket {
                 })
             })
             .map(|(id, subscriber)| async {
-                (
-                    id.clone(),
-                    subscriber
-                        .send_queue
-                        .send(Message::Message(message.clone()))
-                        .await,
-                )
+                (id.clone(), subscriber.send_queue.send(&msg_envelope).await)
             })
             .collect::<Vec<_>>();
 

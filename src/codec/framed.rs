@@ -43,14 +43,14 @@ impl ZmqFramedWrite {
     }
 }
 
-impl futures::Sink<Message> for ZmqFramedWrite {
+impl futures::Sink<&Message> for ZmqFramedWrite {
     type Error = CodecError;
 
     fn poll_ready(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         self.as_mut().inner.poll_ready_unpin(cx)
     }
 
-    fn start_send(mut self: Pin<&mut Self>, item: Message) -> Result<(), Self::Error> {
+    fn start_send(mut self: Pin<&mut Self>, item: &Message) -> Result<(), Self::Error> {
         self.as_mut().inner.start_send_unpin(item)
     }
 

@@ -26,6 +26,7 @@ fn bench_encode(c: &mut Criterion) {
         for &size in FRAME_SIZES {
             let m = build_message(frames, size);
             let total_bytes = (frames * size) as u64;
+            let m = Message::Message(m);
             group.throughput(Throughput::Bytes(total_bytes));
             group.bench_with_input(
                 BenchmarkId::new(format!("frames={frames}"), size),
@@ -34,9 +35,7 @@ fn bench_encode(c: &mut Criterion) {
                     b.iter(|| {
                         let mut codec = ZmqCodec::new();
                         let mut dst = BytesMut::with_capacity(total_bytes as usize + 64);
-                        codec
-                            .encode(Message::Message(m.clone()), &mut dst)
-                            .expect("encode");
+                        codec.encode(&m, &mut dst).expect("encode");
                         black_box(dst);
                     });
                 },
@@ -55,7 +54,7 @@ fn bench_decode(c: &mut Criterion) {
 
             let mut encoded = BytesMut::new();
             ZmqCodec::new()
-                .encode(Message::Message(m), &mut encoded)
+                .encode(&Message::Message(m), &mut encoded)
                 .expect("encode for decode bench");
             let encoded = encoded.freeze();
 

@@ -39,8 +39,8 @@ impl TryFrom<Bytes> for ZmqGreeting {
     }
 }
 
-impl From<ZmqGreeting> for BytesMut {
-    fn from(greet: ZmqGreeting) -> Self {
+impl From<&ZmqGreeting> for BytesMut {
+    fn from(greet: &ZmqGreeting) -> Self {
         let mut data: [u8; 64] = [0; 64];
         data[0] = 0xff;
         data[9] = 0x7f;

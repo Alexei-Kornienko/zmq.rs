@@ -86,8 +86,8 @@ impl TryFrom<Bytes> for ZmqCommand {
     }
 }
 
-impl From<ZmqCommand> for BytesMut {
-    fn from(command: ZmqCommand) -> Self {
+impl From<&ZmqCommand> for BytesMut {
+    fn from(command: &ZmqCommand) -> Self {
         let mut message_len = 0;
 
         let command_name = command.name.as_str();

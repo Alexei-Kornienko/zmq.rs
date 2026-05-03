@@ -135,7 +135,7 @@ fn negotiate_version(greeting: Message) -> ZmqResult<ZmtpVersion> {
 pub(crate) async fn greet_exchange(raw_socket: &mut FramedIo) -> ZmqResult<ZmtpVersion> {
     raw_socket
         .write_half
-        .send(Message::Greeting(ZmqGreeting::default()))
+        .send(&Message::Greeting(ZmqGreeting::default()))
         .await?;
 
     let greeting = match raw_socket.read_half.next().await {
@@ -154,7 +154,7 @@ pub(crate) async fn ready_exchange(
     if let Some(props) = props {
         ready.add_properties(props);
     }
-    raw_socket.write_half.send(Message::Command(ready)).await?;
+    raw_socket.write_half.send(&Message::Command(ready)).await?;
 
     let ready_repl: Option<CodecResult<Message>> = raw_socket.read_half.next().await;
     match ready_repl {
