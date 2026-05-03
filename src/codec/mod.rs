@@ -1,16 +1,14 @@
-//! Implements a codec for ZMQ, providing a way to convert from a byte-oriented
-//! io device to a protocal comprised of [`Message`] frames. See [`FramedIo`]
+//! Implements a codec for ZMQ, providing a way to convert from byte-oriented
+//! IO to a protocol comprised of [`Message`] frames.
 
 mod command;
 mod error;
-mod framed;
 mod greeting;
 pub(crate) mod mechanism;
 mod zmq_codec;
 
 pub(crate) use command::{ZmqCommand, ZmqCommandName};
 pub(crate) use error::{CodecError, CodecResult};
-pub(crate) use framed::{FramedIo, ZmqFramedRead, ZmqFramedWrite};
 pub(crate) use greeting::{ZmqGreeting, ZmtpVersion};
 pub use zmq_codec::ZmqCodec;
 

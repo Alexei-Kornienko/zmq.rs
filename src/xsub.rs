@@ -1,8 +1,8 @@
-use crate::codec::{Message, ZmqFramedRead};
+use crate::codec::Message;
 use crate::endpoint::Endpoint;
 use crate::error::{ZmqError, ZmqResult};
 use crate::fair_queue::FairQueue;
-use crate::runtime::AcceptStopHandle;
+use crate::runtime::{AcceptStopHandle, ZmqFramedRead};
 use crate::sub_backend::{
     connect_with_reconnect, SocketBinds, SubSocketBackend, SubscriptionMessageType,
 };

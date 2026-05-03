@@ -9,7 +9,7 @@ use asynchronous_codec::{FramedRead, FramedWrite};
 use futures::StreamExt;
 use futures::{AsyncRead, AsyncWrite, SinkExt};
 
-// Enables us to have multiple bounds on the dyn trait in `InnerFramed`
+// Enables us to have multiple bounds on the dyn trait in `InnerFramed`.
 pub trait FrameableRead: AsyncRead + Unpin + Send + Sync {}
 impl<T> FrameableRead for T where T: AsyncRead + Unpin + Send + Sync {}
 pub trait FrameableWrite: AsyncWrite + Unpin + Send + Sync {}
@@ -63,7 +63,7 @@ impl futures::Sink<&Message> for ZmqFramedWrite {
     }
 }
 
-/// Equivalent to [`asynchronous_codec::Framed<T, ZmqCodec>`]
+/// Equivalent to [`asynchronous_codec::Framed<T, ZmqCodec>`].
 pub struct FramedIo {
     pub read_half: ZmqFramedRead,
     pub write_half: ZmqFramedWrite,

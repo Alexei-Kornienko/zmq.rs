@@ -1,5 +1,6 @@
-use crate::codec::{FramedIo, Message, ZmqFramedRead, ZmqFramedWrite};
+use crate::codec::Message;
 use crate::fair_queue::QueueInner;
+use crate::runtime::{FramedIo, ZmqFramedRead, ZmqFramedWrite};
 use crate::util::PeerIdentity;
 use crate::{
     MultiPeerBackend, SocketBackend, SocketEvent, SocketOptions, SocketType, ZmqError, ZmqResult,

@@ -49,7 +49,7 @@ pub use crate::xpub::*;
 pub use crate::xsub::*;
 
 use crate::codec::*;
-use crate::runtime::AcceptStopHandle;
+use crate::runtime::{AcceptStopHandle, FramedIo};
 use util::PeerIdentity;
 
 use async_trait::async_trait;

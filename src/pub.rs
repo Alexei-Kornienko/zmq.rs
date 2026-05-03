@@ -1,7 +1,7 @@
 use crate::endpoint::Endpoint;
 use crate::error::ZmqResult;
 use crate::message::*;
-use crate::runtime::AcceptStopHandle;
+use crate::runtime::{AcceptStopHandle, FramedIo, ZmqFramedWrite};
 use crate::util::PeerIdentity;
 use crate::{codec::*, ZmqError};
 use crate::{runtime as async_rt, CaptureSocket, SocketOptions};

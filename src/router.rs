@@ -4,7 +4,7 @@ use crate::endpoint::Endpoint;
 use crate::error::{ZmqError, ZmqResult};
 use crate::fair_queue::FairQueue;
 use crate::message::*;
-use crate::runtime::AcceptStopHandle;
+use crate::runtime::{AcceptStopHandle, ZmqFramedRead};
 use crate::util::PeerIdentity;
 use crate::{MultiPeerBackend, SocketEvent, SocketOptions, SocketRecv, SocketSend, SocketType};
 use crate::{Socket, SocketBackend};

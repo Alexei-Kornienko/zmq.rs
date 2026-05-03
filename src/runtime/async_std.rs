@@ -1,6 +1,6 @@
 pub use ::async_std::{main, test};
 
-use crate::codec::FramedIo;
+use crate::runtime::FramedIo;
 
 fn make_framed<T>(stream: T) -> FramedIo
 where
@@ -79,8 +79,8 @@ pub mod task {
 #[cfg(feature = "tcp-transport")]
 pub(crate) mod tcp {
     use super::make_framed;
-    use crate::codec::FramedIo;
     use crate::endpoint::{Endpoint, Host, Port};
+    use crate::runtime::FramedIo;
     use crate::runtime::{task, AcceptStopHandle};
     use crate::task_handle::TaskHandle;
     use crate::ZmqResult;
@@ -155,8 +155,8 @@ pub(crate) mod tcp {
 #[cfg(all(feature = "ipc-transport", any(target_family = "unix", windows)))]
 pub(crate) mod ipc {
     use super::make_framed;
-    use crate::codec::FramedIo;
     use crate::endpoint::Endpoint;
+    use crate::runtime::FramedIo;
     use crate::runtime::{task, AcceptStopHandle};
     use crate::task_handle::TaskHandle;
     use crate::ZmqResult;

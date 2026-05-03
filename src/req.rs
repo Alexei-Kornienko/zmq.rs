@@ -1,7 +1,7 @@
 use crate::codec::*;
 use crate::endpoint::Endpoint;
 use crate::error::*;
-use crate::runtime::AcceptStopHandle;
+use crate::runtime::{AcceptStopHandle, FramedIo};
 use crate::util::{Peer, PeerIdentity};
 use crate::*;
 use crate::{SocketType, ZmqResult};

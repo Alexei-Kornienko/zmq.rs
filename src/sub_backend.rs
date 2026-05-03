@@ -1,11 +1,11 @@
 use crate::backend::DisconnectNotifier;
-use crate::codec::{CodecError, FramedIo, Message, ZmqFramedRead, ZmqFramedWrite};
+use crate::codec::{CodecError, Message};
 use crate::endpoint::Endpoint;
 use crate::error::ZmqResult;
 use crate::fair_queue::QueueInner;
 use crate::message::ZmqMessage;
 use crate::reconnect::{ReconnectConfig, ReconnectHandle};
-use crate::runtime::AcceptStopHandle;
+use crate::runtime::{AcceptStopHandle, FramedIo, ZmqFramedRead, ZmqFramedWrite};
 use crate::util::PeerIdentity;
 use crate::{
     MultiPeerBackend, SocketBackend, SocketEvent, SocketOptions, SocketType, TryIntoEndpoint,

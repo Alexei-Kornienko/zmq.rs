@@ -24,6 +24,10 @@ compile_error!(
 mod async_dispatcher;
 #[cfg(feature = "async-std-runtime")]
 mod async_std;
+#[cfg(not(feature = "monoio-runtime"))]
+mod framed;
+#[cfg(feature = "monoio-runtime")]
+mod framed_monoio;
 #[cfg(feature = "monoio-runtime")]
 mod monoio;
 #[cfg(feature = "tokio-runtime")]
@@ -52,7 +56,11 @@ pub use self::monoio::{main, task, test};
 #[cfg(feature = "tokio-runtime")]
 pub use self::tokio::{main, task, test};
 
-use crate::codec::FramedIo;
+#[cfg(not(feature = "monoio-runtime"))]
+pub(crate) use self::framed::{FramedIo, ZmqFramedRead, ZmqFramedWrite};
+#[cfg(feature = "monoio-runtime")]
+pub(crate) use self::framed_monoio::{FramedIo, ZmqFramedRead, ZmqFramedWrite};
+
 use crate::endpoint::Endpoint;
 use crate::task_handle::TaskHandle;
 use crate::ZmqResult;
