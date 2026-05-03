@@ -7,7 +7,10 @@ use std::{
 use asynchronous_codec::{Decoder, Encoder};
 use bytes::{Bytes, BytesMut};
 use futures::{future::LocalBoxFuture, FutureExt};
-use monoio::io::{AsyncReadRent, AsyncWriteRent, AsyncWriteRentExt};
+use monoio::{
+    buf::IoBufMut,
+    io::{AsyncReadRent, AsyncWriteRent, AsyncWriteRentExt},
+};
 
 use crate::codec::{CodecError, Message, ZmqCodec};
 
@@ -31,17 +34,23 @@ impl ReadHalf {
         Self::Unix(half)
     }
 
-    async fn read(self, buf: Vec<u8>) -> (Self, io::Result<usize>, Vec<u8>) {
+    async fn read(self, mut buf: BytesMut) -> (Self, io::Result<usize>, BytesMut) {
+        let len = buf.len();
+        if len == buf.capacity() {
+            buf.reserve(READ_BUF_SIZE);
+        }
+        let cap = buf.capacity();
+        let buf = buf.slice_mut(len..cap);
         match self {
             #[cfg(feature = "tcp-transport")]
             Self::Tcp(mut half) => {
                 let (res, buf) = half.read(buf).await;
-                (Self::Tcp(half), res, buf)
+                (Self::Tcp(half), res, buf.into_inner())
             }
             #[cfg(all(feature = "ipc-transport", target_family = "unix"))]
             Self::Unix(mut half) => {
                 let (res, buf) = half.read(buf).await;
-                (Self::Unix(half), res, buf)
+                (Self::Unix(half), res, buf.into_inner())
             }
         }
     }
@@ -111,7 +120,7 @@ impl WriteHalf {
     }
 }
 
-type ReadOp = LocalBoxFuture<'static, (ReadHalf, io::Result<usize>, Vec<u8>)>;
+type ReadOp = LocalBoxFuture<'static, (ReadHalf, io::Result<usize>, BytesMut)>;
 type WriteOp = LocalBoxFuture<'static, (WriteHalf, io::Result<usize>, Bytes)>;
 type FlushOp = LocalBoxFuture<'static, (WriteHalf, io::Result<()>)>;
 
@@ -119,7 +128,6 @@ pub struct ZmqFramedRead {
     inner: Option<ReadHalf>,
     codec: ZmqCodec,
     decode_buf: BytesMut,
-    read_buf: Option<Vec<u8>>,
     read_op: Option<ReadOp>,
     eof: bool,
 }
@@ -132,7 +140,6 @@ impl ZmqFramedRead {
             inner: Some(inner),
             codec: ZmqCodec::new(),
             decode_buf: BytesMut::with_capacity(READ_BUF_SIZE),
-            read_buf: Some(Vec::with_capacity(READ_BUF_SIZE)),
             read_op: None,
             eof: false,
         }
@@ -149,44 +156,37 @@ impl futures::Stream for ZmqFramedRead {
                 return Poll::Ready(None);
             }
 
-            match this.codec.decode(&mut this.decode_buf) {
-                Ok(Some(item)) => return Poll::Ready(Some(Ok(item))),
-                Ok(None) => {}
-                Err(err) => return Poll::Ready(Some(Err(err))),
-            }
-
             if this.read_op.is_none() {
+                match this.codec.decode(&mut this.decode_buf) {
+                    Ok(Some(item)) => return Poll::Ready(Some(Ok(item))),
+                    Ok(None) => {}
+                    Err(err) => return Poll::Ready(Some(Err(err))),
+                }
+
                 let Some(inner) = this.inner.take() else {
                     return Poll::Pending;
                 };
-                let mut buf = this
-                    .read_buf
-                    .take()
-                    .unwrap_or_else(|| Vec::with_capacity(READ_BUF_SIZE));
-                buf.clear();
+                let buf = std::mem::take(&mut this.decode_buf);
                 this.read_op = Some(inner.read(buf).boxed_local());
             }
 
             let read_op = this.read_op.as_mut().expect("read op was just installed");
             match read_op.as_mut().poll(cx) {
                 Poll::Pending => return Poll::Pending,
-                Poll::Ready((inner, result, mut buf)) => {
+                Poll::Ready((inner, result, buf)) => {
                     this.read_op = None;
                     this.inner = Some(inner);
+                    this.decode_buf = buf;
                     match result {
                         Ok(0) => {
                             this.eof = true;
                             return Poll::Ready(None);
                         }
                         Ok(n) => {
-                            this.decode_buf.extend_from_slice(&buf[..n]);
-                            buf.clear();
-                            this.read_buf = Some(buf);
+                            debug_assert!(n <= this.decode_buf.len());
                             continue;
                         }
                         Err(err) => {
-                            buf.clear();
-                            this.read_buf = Some(buf);
                             return Poll::Ready(Some(Err(err.into())));
                         }
                     }
