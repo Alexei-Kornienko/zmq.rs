@@ -1,11 +1,12 @@
 use std::{
+    ffi::c_void,
     io,
     pin::Pin,
     task::{Context, Poll},
 };
 
 use asynchronous_codec::{Decoder, Encoder};
-use bytes::{Bytes, BytesMut};
+use bytes::{BufMut, Bytes, BytesMut};
 use futures::{future::LocalBoxFuture, FutureExt};
 use monoio::{
     buf::IoBufMut,
@@ -15,6 +16,65 @@ use monoio::{
 use crate::codec::{CodecError, Message, ZmqCodec};
 
 const READ_BUF_SIZE: usize = 8 * 1024;
+const LARGE_WRITE_THRESHOLD: usize = 4 * 1024;
+const HEADER_RESERVE: usize = 16;
+const MAX_FRAME_HEADER_LEN: usize = 9;
+
+struct LargeWriteBufs {
+    headers: BytesMut,
+    bodies: Vec<Bytes>,
+    #[cfg(unix)]
+    iovecs: Vec<libc::iovec>,
+}
+
+impl LargeWriteBufs {
+    fn new() -> Self {
+        Self {
+            headers: BytesMut::with_capacity(MAX_FRAME_HEADER_LEN * HEADER_RESERVE),
+            bodies: Vec::with_capacity(HEADER_RESERVE),
+            #[cfg(unix)]
+            iovecs: Vec::with_capacity(HEADER_RESERVE * 2),
+        }
+    }
+
+    fn clear(&mut self) {
+        self.headers.clear();
+        self.bodies.clear();
+        #[cfg(unix)]
+        self.iovecs.clear();
+    }
+}
+
+enum PendingWrite {
+    Small(Bytes),
+    #[cfg(unix)]
+    Large(LargeWriteBufs),
+}
+
+fn frame_header_len(body_len: usize) -> usize {
+    if body_len > 255 {
+        9
+    } else {
+        2
+    }
+}
+
+fn encode_frame_header(body_len: usize, more: bool, dst: &mut BytesMut) {
+    let mut flags: u8 = 0;
+    if more {
+        flags |= 0b0000_0001;
+    }
+    if body_len > 255 {
+        flags |= 0b0000_0010;
+    }
+
+    dst.put_u8(flags);
+    if body_len > 255 {
+        dst.put_u64(body_len as u64);
+    } else {
+        dst.put_u8(body_len as u8);
+    }
+}
 
 enum ReadHalf {
     #[cfg(feature = "tcp-transport")]
@@ -89,6 +149,51 @@ impl WriteHalf {
         }
     }
 
+    #[cfg(unix)]
+    async fn write_vectored_all(
+        self,
+        bufs: LargeWriteBufs,
+    ) -> (Self, io::Result<usize>, LargeWriteBufs) {
+        match self {
+            #[cfg(feature = "tcp-transport")]
+            Self::Tcp(mut half) => {
+                let LargeWriteBufs {
+                    headers,
+                    bodies,
+                    iovecs,
+                } = bufs;
+                let (res, iovecs) = half.write_vectored_all(iovecs).await;
+                (
+                    Self::Tcp(half),
+                    res,
+                    LargeWriteBufs {
+                        headers,
+                        bodies,
+                        iovecs,
+                    },
+                )
+            }
+            #[cfg(all(feature = "ipc-transport", target_family = "unix"))]
+            Self::Unix(mut half) => {
+                let LargeWriteBufs {
+                    headers,
+                    bodies,
+                    iovecs,
+                } = bufs;
+                let (res, iovecs) = half.write_vectored_all(iovecs).await;
+                (
+                    Self::Unix(half),
+                    res,
+                    LargeWriteBufs {
+                        headers,
+                        bodies,
+                        iovecs,
+                    },
+                )
+            }
+        }
+    }
+
     async fn flush(self) -> (Self, io::Result<()>) {
         match self {
             #[cfg(feature = "tcp-transport")]
@@ -121,7 +226,7 @@ impl WriteHalf {
 }
 
 type ReadOp = LocalBoxFuture<'static, (ReadHalf, io::Result<usize>, BytesMut)>;
-type WriteOp = LocalBoxFuture<'static, (WriteHalf, io::Result<usize>, Bytes)>;
+type WriteOp = LocalBoxFuture<'static, (WriteHalf, io::Result<usize>, PendingWrite)>;
 type FlushOp = LocalBoxFuture<'static, (WriteHalf, io::Result<()>)>;
 
 pub struct ZmqFramedRead {
@@ -200,6 +305,9 @@ pub struct ZmqFramedWrite {
     inner: Option<WriteHalf>,
     codec: ZmqCodec,
     write_buf: BytesMut,
+    large_bufs: Option<LargeWriteBufs>,
+    #[cfg(unix)]
+    pending_large: Option<LargeWriteBufs>,
     write_op: Option<WriteOp>,
     flush_op: Option<FlushOp>,
     close_op: Option<FlushOp>,
@@ -214,6 +322,9 @@ impl ZmqFramedWrite {
             inner: Some(inner),
             codec: ZmqCodec::new(),
             write_buf: BytesMut::with_capacity(READ_BUF_SIZE),
+            large_bufs: Some(LargeWriteBufs::new()),
+            #[cfg(unix)]
+            pending_large: None,
             write_op: None,
             flush_op: None,
             close_op: None,
@@ -221,29 +332,122 @@ impl ZmqFramedWrite {
         }
     }
 
+    #[cfg(unix)]
+    fn try_start_large_send(&mut self, item: &Message) -> Result<bool, CodecError> {
+        let Message::Message(message) = item else {
+            return Ok(false);
+        };
+
+        let body_len: usize = message.iter().map(Bytes::len).sum();
+        if body_len < LARGE_WRITE_THRESHOLD {
+            return Ok(false);
+        }
+
+        if self.pending_large.is_some() || !self.write_buf.is_empty() {
+            return Err(CodecError::Other(
+                "framed writer accepted a message before it was ready",
+            ));
+        }
+
+        let frame_count = message.len();
+        let required_headers = MAX_FRAME_HEADER_LEN * frame_count;
+        let required_iovecs = frame_count * 2;
+
+        let mut bufs = self
+            .large_bufs
+            .take()
+            .ok_or(CodecError::Other("large write buffer is already in use"))?;
+        bufs.clear();
+        if bufs.headers.capacity() < required_headers {
+            bufs.headers.reserve(required_headers);
+        }
+        if bufs.bodies.capacity() < frame_count {
+            bufs.bodies.reserve(frame_count);
+        }
+        if bufs.iovecs.capacity() < required_iovecs {
+            bufs.iovecs.reserve(required_iovecs);
+        }
+
+        for (idx, frame) in message.iter().enumerate() {
+            encode_frame_header(frame.len(), idx + 1 != frame_count, &mut bufs.headers);
+            bufs.bodies.push(frame.clone());
+        }
+
+        let mut header_offset = 0;
+        for body in &bufs.bodies {
+            let header_len = frame_header_len(body.len());
+            bufs.iovecs.push(libc::iovec {
+                iov_base: bufs.headers.as_ptr().wrapping_add(header_offset) as *mut c_void,
+                iov_len: header_len,
+            });
+            bufs.iovecs.push(libc::iovec {
+                iov_base: body.as_ptr() as *mut c_void,
+                iov_len: body.len(),
+            });
+            header_offset += header_len;
+        }
+
+        self.pending_large = Some(bufs);
+        Ok(true)
+    }
+
+    #[cfg(not(unix))]
+    fn try_start_large_send(&mut self, _item: &Message) -> Result<bool, CodecError> {
+        Ok(false)
+    }
+
     fn poll_write_buf(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), CodecError>> {
         loop {
             if let Some(write_op) = self.write_op.as_mut() {
                 match write_op.as_mut().poll(cx) {
                     Poll::Pending => return Poll::Pending,
-                    Poll::Ready((inner, result, _buf)) => {
+                    Poll::Ready((inner, result, pending)) => {
                         self.write_op = None;
                         self.inner = Some(inner);
+                        match pending {
+                            PendingWrite::Small(_buf) => {}
+                            #[cfg(unix)]
+                            PendingWrite::Large(mut bufs) => {
+                                bufs.clear();
+                                self.large_bufs = Some(bufs);
+                            }
+                        }
                         result?;
                         continue;
                     }
                 }
             }
 
-            if self.write_buf.is_empty() {
-                return Poll::Ready(Ok(()));
-            }
-
             let Some(inner) = self.inner.take() else {
                 return Poll::Pending;
             };
-            let buf = self.write_buf.split().freeze();
-            self.write_op = Some(inner.write_all(buf).boxed_local());
+
+            if !self.write_buf.is_empty() {
+                let buf = self.write_buf.split().freeze();
+                self.write_op = Some(
+                    async move {
+                        let (inner, result, buf) = inner.write_all(buf).await;
+                        (inner, result, PendingWrite::Small(buf))
+                    }
+                    .boxed_local(),
+                );
+                continue;
+            }
+
+            #[cfg(unix)]
+            if let Some(bufs) = self.pending_large.take() {
+                self.write_op = Some(
+                    async move {
+                        let (inner, result, bufs) = inner.write_vectored_all(bufs).await;
+                        (inner, result, PendingWrite::Large(bufs))
+                    }
+                    .boxed_local(),
+                );
+                continue;
+            }
+
+            self.inner = Some(inner);
+            return Poll::Ready(Ok(()));
         }
     }
 
@@ -286,6 +490,9 @@ impl futures::Sink<&Message> for ZmqFramedWrite {
                 io::ErrorKind::BrokenPipe,
                 "framed writer is closed",
             )));
+        }
+        if this.try_start_large_send(item)? {
+            return Ok(());
         }
         this.codec.encode(item, &mut this.write_buf)
     }

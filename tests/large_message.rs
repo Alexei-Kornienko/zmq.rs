@@ -1,3 +1,4 @@
+use bytes::Bytes;
 use zeromq::__async_rt as async_rt;
 use zeromq::prelude::*;
 use zeromq::{Endpoint, ZmqMessage};
@@ -96,4 +97,36 @@ async fn xsub_xpub_delivers_large_message() {
         .expect("timeout waiting for large XSUB message")
         .unwrap();
     assert_eq!(received.get(0).unwrap().as_ref(), payload.as_slice());
+}
+
+#[cfg_attr(
+    feature = "monoio-runtime",
+    async_rt::test(driver = "uring", enable_timer = true)
+)]
+#[cfg_attr(not(feature = "monoio-runtime"), async_rt::test)]
+async fn pub_sub_delivers_large_multipart_message() {
+    let frames: Vec<_> = (0..20).map(|idx| vec![idx; 192]).collect();
+    let mut message = ZmqMessage::from(Bytes::from(frames[0].clone()));
+    for frame in frames.iter().skip(1) {
+        message.push_back(Bytes::from(frame.clone()));
+    }
+
+    let mut sub_socket = zeromq::SubSocket::new();
+    let endpoint = tcp_endpoint(sub_socket.bind("tcp://127.0.0.1:0").await.unwrap());
+    sub_socket.subscribe("").await.unwrap();
+
+    let mut pub_socket = zeromq::PubSocket::new();
+    pub_socket.connect(&endpoint).await.unwrap();
+    async_rt::task::sleep(Duration::from_millis(100)).await;
+
+    pub_socket.send(message).await.unwrap();
+
+    let received = async_rt::task::timeout(Duration::from_secs(2), sub_socket.recv())
+        .await
+        .expect("timeout waiting for large multipart PUB message")
+        .unwrap();
+    assert_eq!(received.len(), frames.len());
+    for (idx, frame) in frames.iter().enumerate() {
+        assert_eq!(received.get(idx).unwrap().as_ref(), frame.as_slice());
+    }
 }
