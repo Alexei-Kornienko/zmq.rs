@@ -1,31 +1,40 @@
-use crate::codec::*;
 use crate::endpoint::Endpoint;
 use crate::error::ZmqResult;
 use crate::message::*;
 use crate::transport::AcceptStopHandle;
 use crate::util::PeerIdentity;
 use crate::{async_rt, CaptureSocket, SocketOptions};
+use crate::{codec::*, ZmqError};
 use crate::{MultiPeerBackend, Socket, SocketBackend, SocketEvent, SocketSend, SocketType};
 
 use async_trait::async_trait;
 use futures::channel::{mpsc, oneshot};
-use futures::lock::Mutex as AsyncMutex;
-use futures::{select, FutureExt, SinkExt, StreamExt};
+use futures::{future, select, FutureExt, SinkExt, StreamExt};
 use parking_lot::Mutex;
 
 use std::collections::HashMap;
 use std::io::ErrorKind;
-use std::pin::Pin;
 use std::sync::Arc;
+
+enum ConnectionCommand {
+    New(PeerIdentity, ZmqFramedWrite, oneshot::Sender<()>),
+    Closed(PeerIdentity),
+}
+
+enum SubscriptionCommand {
+    Subscribe(PeerIdentity, Vec<u8>),
+    Unsubscribe(PeerIdentity, Vec<u8>),
+}
 
 pub(crate) struct Subscriber {
     pub(crate) subscriptions: Vec<Vec<u8>>,
-    pub(crate) send_queue: Arc<AsyncMutex<Pin<Box<ZmqFramedWrite>>>>,
+    pub(crate) send_queue: ZmqFramedWrite,
     _subscription_coro_stop: oneshot::Sender<()>,
 }
 
 pub(crate) struct PubSocketBackend {
-    subscribers: scc::HashMap<PeerIdentity, Subscriber>,
+    connections_command: std::sync::mpsc::Sender<ConnectionCommand>,
+    subscriptions_command: std::sync::mpsc::Sender<SubscriptionCommand>,
     socket_monitor: Mutex<Option<mpsc::Sender<SocketEvent>>>,
     socket_options: SocketOptions,
 }
@@ -49,19 +58,20 @@ impl PubSocketBackend {
 
         match data.first() {
             Some(1) => {
-                // Subscribe
-                if let Some(mut entry) = self.subscribers.get_sync(peer_id) {
-                    entry.subscriptions.push(Vec::from(&data[1..]));
-                }
+                let _ = self
+                    .subscriptions_command
+                    .send(SubscriptionCommand::Subscribe(
+                        peer_id.clone(),
+                        Vec::from(&data[1..]),
+                    ));
             }
             Some(0) => {
-                // Unsubscribe
-                let sub = Vec::from(&data[1..]);
-                if let Some(mut entry) = self.subscribers.get_sync(peer_id) {
-                    if let Some(index) = entry.subscriptions.iter().position(|s| s == &sub) {
-                        entry.subscriptions.remove(index);
-                    }
-                }
+                let _ = self
+                    .subscriptions_command
+                    .send(SubscriptionCommand::Unsubscribe(
+                        peer_id.clone(),
+                        Vec::from(&data[1..]),
+                    ));
             }
             _ => log::warn!(
                 "Received message with unexpected first byte: {:?}",
@@ -80,9 +90,7 @@ impl SocketBackend for PubSocketBackend {
         &self.socket_options
     }
 
-    fn shutdown(&self) {
-        self.subscribers.clear_sync();
-    }
+    fn shutdown(&self) {}
 
     fn monitor(&self) -> &Mutex<Option<mpsc::Sender<SocketEvent>>> {
         &self.socket_monitor
@@ -93,18 +101,13 @@ impl SocketBackend for PubSocketBackend {
 impl MultiPeerBackend for PubSocketBackend {
     async fn peer_connected(self: Arc<Self>, peer_id: &PeerIdentity, io: FramedIo) {
         let (mut recv_queue, send_queue) = io.into_parts();
-        // TODO provide handling for recv_queue
         let (sender, stop_receiver) = oneshot::channel();
-        self.subscribers
-            .upsert_async(
-                peer_id.clone(),
-                Subscriber {
-                    subscriptions: vec![],
-                    send_queue: Arc::new(AsyncMutex::new(Box::pin(send_queue))),
-                    _subscription_coro_stop: sender,
-                },
-            )
-            .await;
+        let _ = self.connections_command.send(ConnectionCommand::New(
+            peer_id.to_owned(),
+            send_queue,
+            sender,
+        ));
+
         let backend = self;
         let peer_id = peer_id.clone();
         async_rt::task::spawn(async move {
@@ -135,17 +138,78 @@ impl MultiPeerBackend for PubSocketBackend {
     }
 
     fn peer_disconnected(&self, peer_id: &PeerIdentity) {
-        log::info!("Client disconnected {:?}", peer_id);
-        if let Some(monitor) = self.monitor().lock().as_mut() {
-            let _ = monitor.try_send(SocketEvent::Disconnected(peer_id.clone()));
-        }
-        self.subscribers.remove_sync(peer_id);
+        let _ = self
+            .connections_command
+            .send(ConnectionCommand::Closed(peer_id.to_owned()));
     }
 }
 
 pub struct PubSocket {
     pub(crate) backend: Arc<PubSocketBackend>,
+    subscribers: HashMap<PeerIdentity, Subscriber>,
     binds: HashMap<Endpoint, AcceptStopHandle>,
+    connections_commands: std::sync::mpsc::Receiver<ConnectionCommand>,
+    subscription_commands: std::sync::mpsc::Receiver<SubscriptionCommand>,
+}
+
+impl PubSocket {
+    fn disconnect_peer(&mut self, peer_id: PeerIdentity) {
+        log::info!("Client disconnected {:?}", peer_id);
+        if let Some(monitor) = self.backend.monitor().lock().as_mut() {
+            // TODO simplify me
+            let _ = monitor.try_send(SocketEvent::Disconnected(peer_id.clone()));
+        }
+        self.subscribers.remove(&peer_id);
+    }
+
+    fn process_connections(&mut self) -> Result<(), ZmqError> {
+        use std::sync::mpsc::TryRecvError;
+        loop {
+            let command_message = self.connections_commands.try_recv();
+            match command_message {
+                Ok(ConnectionCommand::New(peer_id, send_queue, sender)) => {
+                    self.subscribers.insert(
+                        peer_id.clone(),
+                        Subscriber {
+                            subscriptions: vec![],
+                            send_queue: send_queue,
+                            _subscription_coro_stop: sender,
+                        },
+                    );
+                }
+                Ok(ConnectionCommand::Closed(peer_id)) => self.disconnect_peer(peer_id),
+                Err(TryRecvError::Empty) => return Ok(()),
+                Err(TryRecvError::Disconnected) => {
+                    return Err(ZmqError::Other("Command channel closed"))
+                }
+            }
+        }
+    }
+
+    fn process_subscriptions(&mut self) -> Result<(), ZmqError> {
+        use std::sync::mpsc::TryRecvError;
+        loop {
+            let subscription_command = self.subscription_commands.try_recv();
+            match subscription_command {
+                Ok(SubscriptionCommand::Subscribe(peer_id, data)) => {
+                    if let Some(entry) = self.subscribers.get_mut(&peer_id) {
+                        entry.subscriptions.push(data);
+                    }
+                }
+                Ok(SubscriptionCommand::Unsubscribe(peer_id, data)) => {
+                    if let Some(entry) = self.subscribers.get_mut(&peer_id) {
+                        if let Some(index) = entry.subscriptions.iter().position(|s| s == &data) {
+                            entry.subscriptions.remove(index);
+                        }
+                    }
+                }
+                Err(TryRecvError::Empty) => return Ok(()),
+                Err(TryRecvError::Disconnected) => {
+                    return Err(ZmqError::Other("Command channel closed"))
+                }
+            }
+        }
+    }
 }
 
 impl Drop for PubSocket {
@@ -157,49 +221,54 @@ impl Drop for PubSocket {
 #[async_trait]
 impl SocketSend for PubSocket {
     async fn send(&mut self, message: ZmqMessage) -> ZmqResult<()> {
+        self.process_connections()?;
+        self.process_subscriptions()?;
+
         let first_frame = match message.get(0) {
             Some(frame) => frame,
             None => return Ok(()), // Empty message, nothing to publish
         };
-        let mut targets = Vec::new();
-        let mut iter = self.backend.subscribers.begin_async().await;
-        while let Some(subscriber) = iter {
-            if subscriber.subscriptions.iter().any(|sub_filter| {
-                sub_filter.len() <= first_frame.len()
-                    && sub_filter.as_slice() == &first_frame[0..sub_filter.len()]
-            }) {
-                targets.push((subscriber.key().clone(), subscriber.send_queue.clone()));
-            }
-            iter = subscriber.next_async().await;
-        }
 
-        let mut dead_peers = Vec::new();
-        for (peer_id, send_queue) in targets {
-            let res = send_queue
-                .lock()
-                .await
-                .as_mut()
-                .send(Message::Message(message.clone()))
-                .await;
-            match res {
+        let fanout = self
+            .subscribers
+            .iter_mut()
+            .filter(|(_id, subscriber)| {
+                subscriber.subscriptions.iter().any(|sub_filter| {
+                    sub_filter.len() <= first_frame.len()
+                        && sub_filter.as_slice() == &first_frame[0..sub_filter.len()]
+                })
+            })
+            .map(|(id, subscriber)| async {
+                (
+                    id.clone(),
+                    subscriber
+                        .send_queue
+                        .send(Message::Message(message.clone()))
+                        .await,
+                )
+            })
+            .collect::<Vec<_>>();
+
+        let results = future::join_all(fanout).await;
+
+        let mut final_result = Ok(());
+        for (peer, result) in results {
+            match result {
                 Ok(()) => {}
                 Err(CodecError::Io(e)) => {
                     if e.kind() == ErrorKind::BrokenPipe {
-                        dead_peers.push(peer_id);
+                        self.disconnect_peer(peer);
                     } else {
                         log::error!("Error sending message: {:?}", e);
                     }
                 }
                 Err(e) => {
                     log::error!("Error sending message: {:?}", e);
-                    return Err(e.into());
+                    final_result = Err(e.into());
                 }
             }
         }
-        for peer in dead_peers {
-            self.backend.peer_disconnected(&peer);
-        }
-        Ok(())
+        final_result
     }
 }
 
@@ -208,9 +277,15 @@ impl CaptureSocket for PubSocket {}
 #[async_trait]
 impl Socket for PubSocket {
     fn with_options(options: SocketOptions) -> Self {
+        let (conn_tx, conn_rx) = std::sync::mpsc::channel();
+        let (subs_tx, subs_rx) = std::sync::mpsc::channel();
         Self {
+            subscribers: HashMap::new(),
+            connections_commands: conn_rx,
+            subscription_commands: subs_rx,
             backend: Arc::new(PubSocketBackend {
-                subscribers: scc::HashMap::new(),
+                connections_command: conn_tx,
+                subscriptions_command: subs_tx,
                 socket_monitor: Mutex::new(None),
                 socket_options: options,
             }),
