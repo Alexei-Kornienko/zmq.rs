@@ -132,7 +132,7 @@ fn bench_zmqrs_pub_sub(c: &mut Criterion) {
     for &transport in TRANSPORTS {
         for &n_subs in SUB_COUNTS {
             let mut group = c.benchmark_group(format!("zmqrs/pub_sub/{transport}/subs={n_subs}"));
-            group.sample_size(10);
+            group.sample_size(100);
             group.measurement_time(Duration::from_secs(10));
             group.warm_up_time(Duration::from_secs(2));
             for &msg_size in MSG_SIZES {
