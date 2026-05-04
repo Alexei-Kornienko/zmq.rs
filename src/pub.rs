@@ -232,34 +232,46 @@ impl SocketSend for PubSocket {
         };
 
         let msg_envelope = Message::Message(message);
-        let fanout = self
-            .subscribers
-            .iter_mut()
-            .filter(|(_id, subscriber)| {
-                subscriber.subscriptions.iter().any(|sub_filter| {
-                    sub_filter.len() <= first_frame.len()
-                        && sub_filter.as_slice() == &first_frame[0..sub_filter.len()]
-                })
-            })
-            .map(|(id, subscriber)| async {
-                (id.clone(), subscriber.send_queue.send(&msg_envelope).await)
-            })
-            .collect::<Vec<_>>();
 
-        let results = future::join_all(fanout).await;
+        let mut results = HashMap::new();
+
+        for (id, subscriber) in self.subscribers.iter_mut() {
+            let matches_filter = subscriber.subscriptions.iter().any(|sub_filter| {
+                sub_filter.len() <= first_frame.len()
+                    && sub_filter.as_slice() == &first_frame[0..sub_filter.len()]
+            });
+            if matches_filter {
+                let res = subscriber.send_queue.feed(&msg_envelope).await;
+                if let Err(e) = res {
+                    results.insert(id.clone(), e);
+                }
+            }
+        }
+
+        for (id, subscriber) in self.subscribers.iter_mut() {
+            let matches_filter = subscriber.subscriptions.iter().any(|sub_filter| {
+                sub_filter.len() <= first_frame.len()
+                    && sub_filter.as_slice() == &first_frame[0..sub_filter.len()]
+            });
+            if matches_filter && !results.contains_key(id) {
+                let res = subscriber.send_queue.flush().await;
+                if let Err(e) = res {
+                    results.insert(id.clone(), e);
+                }
+            }
+        }
 
         let mut final_result = Ok(());
         for (peer, result) in results {
             match result {
-                Ok(()) => {}
-                Err(CodecError::Io(e)) => {
+                CodecError::Io(e) => {
                     if e.kind() == ErrorKind::BrokenPipe {
                         self.disconnect_peer(peer);
                     } else {
                         log::error!("Error sending message: {:?}", e);
                     }
                 }
-                Err(e) => {
+                e => {
                     log::error!("Error sending message: {:?}", e);
                     final_result = Err(e.into());
                 }
